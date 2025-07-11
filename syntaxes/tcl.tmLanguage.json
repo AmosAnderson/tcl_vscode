@@ -1,0 +1,283 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "TCL",
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#quoted-strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#variables"
+        },
+        {
+            "include": "#proc-definition"
+        },
+        {
+            "include": "#namespace-definition"
+        },
+        {
+            "include": "#package-commands"
+        },
+        {
+            "include": "#control-keywords"
+        },
+        {
+            "include": "#builtin-commands"
+        },
+        {
+            "include": "#tk-commands"
+        },
+        {
+            "include": "#expect-commands"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#embedded-commands"
+        },
+        {
+            "include": "#braced-blocks"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.number-sign.tcl",
+                    "match": "#.*$"
+                }
+            ]
+        },
+        "quoted-strings": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.tcl",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.tcl",
+                            "match": "\\\\."
+                        },
+                        {
+                            "include": "#variables"
+                        },
+                        {
+                            "include": "#embedded-commands"
+                        }
+                    ]
+                }
+            ]
+        },
+        "braced-blocks": {
+            "patterns": [
+                {
+                    "name": "meta.block.tcl",
+                    "begin": "\\{",
+                    "end": "\\}",
+                    "patterns": [
+                        {
+                            "include": "$self"
+                        }
+                    ]
+                }
+            ]
+        },
+        "numbers": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.float.tcl",
+                    "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?\\b"
+                },
+                {
+                    "name": "constant.numeric.integer.hexadecimal.tcl",
+                    "match": "\\b0[xX][0-9a-fA-F]+\\b"
+                },
+                {
+                    "name": "constant.numeric.integer.octal.tcl",
+                    "match": "\\b0[0-7]+\\b"
+                },
+                {
+                    "name": "constant.numeric.integer.binary.tcl",
+                    "match": "\\b0[bB][01]+\\b"
+                },
+                {
+                    "name": "constant.numeric.integer.decimal.tcl",
+                    "match": "\\b\\d+\\b"
+                }
+            ]
+        },
+        "variables": {
+            "patterns": [
+                {
+                    "name": "variable.other.tcl",
+                    "match": "\\$\\{[^}]+\\}"
+                },
+                {
+                    "name": "variable.other.array.tcl",
+                    "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*\\([^)]+\\)"
+                },
+                {
+                    "name": "variable.other.tcl",
+                    "match": "\\$[a-zA-Z_:][a-zA-Z0-9_:]*"
+                }
+            ]
+        },
+        "proc-definition": {
+            "patterns": [
+                {
+                    "match": "\\b(proc)\\s+([a-zA-Z_:][a-zA-Z0-9_:]*)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.tcl"
+                        },
+                        "2": {
+                            "name": "entity.name.function.tcl"
+                        }
+                    }
+                }
+            ]
+        },
+        "namespace-definition": {
+            "patterns": [
+                {
+                    "match": "\\b(namespace)\\s+(eval|export|import|delete|current|parent|children|tail|qualifiers|which|exists|forget|inscope|origin|path|unknown|upvar|code|ensemble)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.tcl"
+                        },
+                        "2": {
+                            "name": "keyword.other.tcl"
+                        }
+                    }
+                },
+                {
+                    "name": "entity.name.namespace.tcl",
+                    "match": "::[a-zA-Z_][a-zA-Z0-9_:]*"
+                }
+            ]
+        },
+        "package-commands": {
+            "patterns": [
+                {
+                    "match": "\\b(package)\\s+(provide|require|present|names|versions|ifneeded|forget|unknown|vcompare|vsatisfies)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.tcl"
+                        },
+                        "2": {
+                            "name": "keyword.other.tcl"
+                        }
+                    }
+                }
+            ]
+        },
+        "control-keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.tcl",
+                    "match": "\\b(if|then|else|elseif|for|foreach|while|switch|case|default|break|continue|return|exit|catch|try|throw|finally)\\b"
+                }
+            ]
+        },
+        "builtin-commands": {
+            "patterns": [
+                {
+                    "name": "support.function.builtin.tcl",
+                    "match": "\\b(set|puts|gets|open|close|read|write|seek|tell|eof|flush|glob|file|cd|pwd|exec|pid|clock|time|after|update|vwait|incr|expr|eval|source|load|unload|rename|unknown|info|interp|uplevel|upvar|global|variable|unset|trace|history|encoding|binary|format|scan|subst|error)\\b"
+                },
+                {
+                    "name": "support.function.list.tcl",
+                    "match": "\\b(list|lindex|linsert|llength|lappend|lrange|lreplace|lsearch|lsort|lset|lmap|lrepeat|lreverse|join|split|concat)\\b"
+                },
+                {
+                    "name": "support.function.string.tcl",
+                    "match": "\\b(string|append|regexp|regsub)\\b"
+                },
+                {
+                    "name": "support.function.array.tcl",
+                    "match": "\\b(array|dict)\\b"
+                }
+            ]
+        },
+        "tk-commands": {
+            "patterns": [
+                {
+                    "name": "support.class.tk.widget.tcl",
+                    "match": "\\b(button|canvas|checkbutton|entry|frame|label|labelframe|listbox|menu|menubutton|message|panedwindow|radiobutton|scale|scrollbar|spinbox|text|toplevel)\\b"
+                },
+                {
+                    "name": "support.function.tk.tcl",
+                    "match": "\\b(pack|grid|place|wm|bind|bindtags|bell|clipboard|destroy|event|focus|font|grab|image|lower|option|raise|selection|send|tk|tkwait|winfo)\\b"
+                },
+                {
+                    "name": "support.function.tk.dialog.tcl",
+                    "match": "\\b(tk_messageBox|tk_dialog|tk_chooseColor|tk_chooseDirectory|tk_getOpenFile|tk_getSaveFile|tk_popup)\\b"
+                }
+            ]
+        },
+        "expect-commands": {
+            "patterns": [
+                {
+                    "name": "keyword.control.expect.tcl",
+                    "match": "\\b(spawn|expect|send|interact|wait|eof|timeout|close|log_file|log_user|exp_continue|exp_internal|exp_open|exp_pid)\\b"
+                }
+            ]
+        },
+        "operators": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.comparison.tcl",
+                    "match": "\\b(eq|ne|in|ni)\\b"
+                },
+                {
+                    "name": "keyword.operator.arithmetic.tcl",
+                    "match": "[+\\-*/%]"
+                },
+                {
+                    "name": "keyword.operator.comparison.tcl",
+                    "match": "(==|!=|<=|>=|<|>)"
+                },
+                {
+                    "name": "keyword.operator.logical.tcl",
+                    "match": "(&&|\\|\\||!)"
+                },
+                {
+                    "name": "keyword.operator.bitwise.tcl",
+                    "match": "(&|\\||\\^|~|<<|>>)"
+                }
+            ]
+        },
+        "embedded-commands": {
+            "patterns": [
+                {
+                    "name": "meta.embedded.command.tcl",
+                    "begin": "\\[",
+                    "end": "\\]",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.section.embedded.begin.tcl"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.section.embedded.end.tcl"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "$self"
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "scopeName": "source.tcl"
+}

@@ -1,0 +1,105 @@
+{
+  "name": "tcl-language-support",
+  "displayName": "TCL Language Support",
+  "description": "TCL language support with syntax highlighting and formatting",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "keywords": [
+    "tcl",
+    "tk",
+    "expect"
+  ],
+  "publisher": "your-publisher-name",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/tcl-vscode"
+  },
+  "activationEvents": [
+    "onLanguage:tcl"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "tcl",
+        "aliases": [
+          "TCL",
+          "Tcl"
+        ],
+        "extensions": [
+          ".tcl",
+          ".tk",
+          ".tm",
+          ".test"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tcl",
+        "scopeName": "source.tcl",
+        "path": "./syntaxes/tcl.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "TCL",
+      "properties": {
+        "tcl.format.alignBraces": {
+          "type": "boolean",
+          "default": true,
+          "description": "Align opening and closing braces"
+        },
+        "tcl.format.spacesAroundOperators": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add spaces around operators"
+        },
+        "tcl.format.spacesInsideBraces": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add spaces inside braces"
+        },
+        "tcl.format.spacesInsideBrackets": {
+          "type": "boolean",
+          "default": false,
+          "description": "Add spaces inside brackets"
+        },
+        "tcl.format.enable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable automatic TCL formatting on save"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "tcl.formatDocument",
+        "title": "Format TCL Document"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "16.x",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0",
+    "typescript": "^4.9.3",
+    "@vscode/test-electron": "^2.2.0"
+  }
+}
