@@ -1,8 +1,8 @@
 {
-  "name": "tcl-language-support",
-  "displayName": "TCL Language Support",
+  "name": "tcl-syntax",
+  "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -15,7 +15,7 @@
     "tk",
     "expect"
   ],
-  "publisher": "your-publisher-name",
+  "publisher": "amos-anderson",
   "repository": {
     "type": "git",
     "url": "https://github.com/yourusername/tcl-vscode"

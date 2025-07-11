@@ -1,40 +1,40 @@
 # Example TCL file to test syntax highlighting and formatting
 namespace eval ::myapp {
- namespace export greet calculate
+   namespace export greet calculate
 
-    # Define a greeting procedure
- proc greet {name} {
- if {$name eq ""} {
- puts "Hello, stranger!"
- } else {
- puts "Hello, $name!"
- }
- }
+   # Define a greeting procedure
+   proc greet {name} {
+      if {$name eq ""} {
+         puts "Hello, stranger!"
+      } else {
+         puts "Hello, $name!"
+      }
+   }
 
-    # Calculate factorial
- proc factorial {n} {
- if {$n < = 1} {
- return 1
- } else {
- return [expr {$n * [factorial [expr {$n - 1}]]}]
- }
- }
+   # Calculate factorial
+   proc factorial {n} {
+      if {$n < = 1} {
+         return 1
+      } else {
+         return [expr {$n * [factorial [expr {$n - 1}]]}]
+      }
+   }
 
-    # TK widget example
- proc createWindow {} {
- package r eq uire Tk
- toplevel .mywindow
- wm title .mywindow "TCL Test"
+   # TK widget example
+   proc createWindow {} {
+      package r eq uire Tk
+      toplevel .mywindow
+      wm title .mywindow "TCL Test"
 
- label .mywindow.label - text "Enter a number:"
- entry .mywindow.entry - textvariable number
- button .mywindow.button - text "Calculate!" -command {
- set result [factorial $::number]
- tk_messageBox - message "Factorial: $result"
- }
+      label .mywindow.label - text "Enter a number:"
+      entry .mywindow.entry - textvariable number
+      button .mywindow.button - text "Calculate!" -command {
+         set result [factorial $::number]
+         tk_messageBox - message "Factorial: $result"
+      }
 
- pack .mywindow.label .mywindow.entry .mywindow.button
- }
+      pack .mywindow.label .mywindow.entry .mywindow.button
+   }
 }
 
 # Package management
@@ -42,10 +42,10 @@ package provide myapp 1.0
 
 # Expect example (if available)
 if {[catch {package r eq uire Expect}] == 0} {
- spawn ssh user@host
- expect "password:"
- send "secret\r"
- expect "$"
+   spawn ssh user@host
+   expect "password:"
+   send "secret\r"
+   expect "$"
 }
 
 # Main execution
