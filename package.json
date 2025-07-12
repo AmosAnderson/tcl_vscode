@@ -75,6 +75,26 @@
           "type": "boolean",
           "default": false,
           "description": "Enable automatic TCL formatting on save"
+        },
+        "tcl.diagnostics.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable TCL syntax diagnostics"
+        },
+        "tcl.diagnostics.useTclsh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use tclsh for advanced syntax validation"
+        },
+        "tcl.repl.tclPath": {
+          "type": "string",
+          "default": "tclsh",
+          "description": "Path to TCL interpreter for REPL"
+        },
+        "tcl.test.tclPath": {
+          "type": "string",
+          "default": "tclsh",
+          "description": "Path to TCL interpreter for running tests"
         }
       }
     },
@@ -82,6 +102,115 @@
       {
         "command": "tcl.formatDocument",
         "title": "Format TCL Document"
+      },
+      {
+        "command": "tcl.startREPL",
+        "title": "Start TCL REPL"
+      },
+      {
+        "command": "tcl.evaluateSelection",
+        "title": "Evaluate Selection in TCL REPL"
+      },
+      {
+        "command": "tcl.runCurrentFile",
+        "title": "Run Current File in TCL REPL"
+      },
+      {
+        "command": "tcl.runTests",
+        "title": "Run TCL Tests"
+      },
+      {
+        "command": "tcl.generateCoverage",
+        "title": "Generate Test Coverage"
+      },
+      {
+        "command": "tcl.clearCoverage",
+        "title": "Clear Coverage Data"
+      },
+      {
+        "command": "tcl.exportCoverageReport",
+        "title": "Export Coverage Report"
+      },
+      {
+        "command": "tcl.extractProcedure",
+        "title": "Extract Procedure"
+      },
+      {
+        "command": "tcl.extractVariable",
+        "title": "Extract Variable"
+      },
+      {
+        "command": "tcl.inlineVariable",
+        "title": "Inline Variable"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "tcl",
+        "label": "TCL Debug",
+        "program": "./out/debug/tclDebugAdapter.js",
+        "runtime": "node",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Absolute path to a TCL file.",
+                "default": "${workspaceFolder}/${command:AskForProgramName}"
+              },
+              "tclPath": {
+                "type": "string",
+                "description": "Path to TCL interpreter",
+                "default": "tclsh"
+              },
+              "args": {
+                "type": "array",
+                "description": "Arguments passed to the program",
+                "default": []
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory",
+                "default": "${workspaceFolder}"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables",
+                "default": {}
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "Stop on entry",
+                "default": true
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "tcl",
+            "request": "launch",
+            "name": "Launch TCL",
+            "program": "${file}",
+            "stopOnEntry": true
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "TCL: Launch",
+            "description": "A new configuration for launching a TCL program",
+            "body": {
+              "type": "tcl",
+              "request": "launch",
+              "name": "Launch TCL",
+              "program": "^\"\\${workspaceFolder}/\\${command:AskForProgramName}\"",
+              "stopOnEntry": true
+            }
+          }
+        ]
       }
     ]
   },
@@ -94,12 +223,14 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.74.0",
     "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
+    "@vscode/test-electron": "^2.2.0",
     "eslint": "^8.28.0",
     "typescript": "^4.9.3",
-    "@vscode/test-electron": "^2.2.0"
+    "vscode-debugadapter": "^1.51.0",
+    "vscode-debugprotocol": "^1.51.0"
   }
 }

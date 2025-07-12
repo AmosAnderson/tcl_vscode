@@ -1,0 +1,278 @@
+import * as vscode from 'vscode';
+
+export class TclRenameProvider implements vscode.RenameProvider {
+    
+    public async provideRenameEdits(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        newName: string,
+        token: vscode.CancellationToken
+    ): Promise<vscode.WorkspaceEdit | null> {
+        
+        const wordRange = document.getWordRangeAtPosition(position);
+        if (!wordRange) {
+            return null;
+        }
+
+        const oldName = document.getText(wordRange);
+        
+        // Validate the old name is a valid TCL identifier
+        if (!this.isValidTclIdentifier(oldName)) {
+            throw new Error('Selected text is not a valid TCL identifier');
+        }
+
+        // Validate the new name
+        if (!this.isValidTclIdentifier(newName)) {
+            throw new Error('New name is not a valid TCL identifier');
+        }
+
+        // Determine the type of symbol being renamed
+        const symbolType = await this.getSymbolType(document, position, oldName);
+        
+        if (!symbolType) {
+            throw new Error('Cannot determine symbol type for renaming');
+        }
+
+        // Find all references to rename
+        const edit = new vscode.WorkspaceEdit();
+        
+        if (symbolType === 'procedure') {
+            await this.renameProcedure(document, oldName, newName, edit);
+        } else if (symbolType === 'variable') {
+            await this.renameVariable(document, oldName, newName, edit);
+        } else if (symbolType === 'namespace') {
+            await this.renameNamespace(document, oldName, newName, edit);
+        }
+
+        return edit;
+    }
+
+    public prepareRename(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        token: vscode.CancellationToken
+    ): vscode.ProviderResult<vscode.Range | { range: vscode.Range; placeholder: string }> {
+        
+        const wordRange = document.getWordRangeAtPosition(position);
+        if (!wordRange) {
+            throw new Error('Nothing to rename here');
+        }
+
+        const word = document.getText(wordRange);
+        
+        if (!this.isValidTclIdentifier(word)) {
+            throw new Error('Selected text is not a valid TCL identifier');
+        }
+
+        return {
+            range: wordRange,
+            placeholder: word
+        };
+    }
+
+    private isValidTclIdentifier(name: string): boolean {
+        // TCL identifiers can contain letters, digits, underscores, and colons (for namespaces)
+        return /^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(name);
+    }
+
+    private async getSymbolType(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        symbolName: string
+    ): Promise<string | null> {
+        
+        const line = document.lineAt(position.line);
+        const lineText = line.text;
+        const wordStart = position.character - symbolName.length;
+
+        // Check context to determine symbol type
+        
+        // Check if it's a procedure definition
+        const procDefPattern = new RegExp(`\\bproc\\s+${symbolName}\\b`);
+        if (procDefPattern.test(lineText)) {
+            return 'procedure';
+        }
+
+        // Check if it's a procedure call (at the beginning of a command)
+        const procCallPattern = new RegExp(`^\\s*${symbolName}\\b`);
+        if (procCallPattern.test(lineText)) {
+            return 'procedure';
+        }
+
+        // Check if it's a variable (preceded by $)
+        if (wordStart > 0 && lineText[wordStart - 1] === '$') {
+            return 'variable';
+        }
+
+        // Check if it's a variable assignment
+        const varAssignPattern = new RegExp(`\\bset\\s+${symbolName}\\b`);
+        if (varAssignPattern.test(lineText)) {
+            return 'variable';
+        }
+
+        // Check if it's a namespace
+        const namespacePattern = new RegExp(`\\bnamespace\\s+(create|eval)\\s+${symbolName}\\b`);
+        if (namespacePattern.test(lineText)) {
+            return 'namespace';
+        }
+
+        // Look for procedure definition in the document
+        if (await this.findProcedureDefinition(document, symbolName)) {
+            return 'procedure';
+        }
+
+        // Default to variable if we can't determine
+        return 'variable';
+    }
+
+    private async findProcedureDefinition(
+        document: vscode.TextDocument,
+        procName: string
+    ): Promise<boolean> {
+        const text = document.getText();
+        const procPattern = new RegExp(`\\bproc\\s+${procName}\\b`, 'g');
+        return procPattern.test(text);
+    }
+
+    private async renameProcedure(
+        document: vscode.TextDocument,
+        oldName: string,
+        newName: string,
+        edit: vscode.WorkspaceEdit
+    ): Promise<void> {
+        
+        // Find all references across the workspace
+        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}');
+        
+        for (const file of files) {
+            const doc = await vscode.workspace.openTextDocument(file);
+            const text = doc.getText();
+            const lines = text.split('\n');
+            
+            for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+                const line = lines[lineNum];
+                
+                // Find procedure definitions
+                const procDefPattern = new RegExp(`\\bproc\\s+${oldName}\\b`, 'g');
+                let match;
+                while ((match = procDefPattern.exec(line)) !== null) {
+                    const startPos = new vscode.Position(lineNum, match.index + match[0].indexOf(oldName));
+                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
+                }
+
+                // Find procedure calls (at start of commands)
+                const procCallPattern = new RegExp(`(^|[\\s;])${oldName}\\b`, 'g');
+                while ((match = procCallPattern.exec(line)) !== null) {
+                    const offset = match[1] ? match[1].length : 0;
+                    const startPos = new vscode.Position(lineNum, match.index + offset);
+                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
+                }
+            }
+        }
+    }
+
+    private async renameVariable(
+        document: vscode.TextDocument,
+        oldName: string,
+        newName: string,
+        edit: vscode.WorkspaceEdit
+    ): Promise<void> {
+        
+        // For variables, we typically only rename within the current file/scope
+        // unless it's a global variable
+        
+        const text = document.getText();
+        const lines = text.split('\n');
+        
+        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+            const line = lines[lineNum];
+            
+            // Find variable assignments (set command)
+            const setPattern = new RegExp(`\\bset\\s+(${oldName})\\b`, 'g');
+            let match;
+            while ((match = setPattern.exec(line)) !== null) {
+                const startPos = new vscode.Position(lineNum, match.index + match[0].indexOf(oldName));
+                const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+            }
+
+            // Find variable references ($ prefix)
+            const varRefPattern = new RegExp(`\\$${oldName}\\b`, 'g');
+            while ((match = varRefPattern.exec(line)) !== null) {
+                const startPos = new vscode.Position(lineNum, match.index + 1); // Skip the $
+                const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+            }
+
+            // Find array variable references
+            const arrayRefPattern = new RegExp(`\\$${oldName}\\(`, 'g');
+            while ((match = arrayRefPattern.exec(line)) !== null) {
+                const startPos = new vscode.Position(lineNum, match.index + 1); // Skip the $
+                const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+            }
+
+            // Find other variable-related commands (global, variable, upvar, etc.)
+            const varCmdPattern = new RegExp(`\\b(global|variable|upvar)\\s+.*\\b${oldName}\\b`, 'g');
+            while ((match = varCmdPattern.exec(line)) !== null) {
+                const nameMatch = line.substring(match.index).match(new RegExp(`\\b${oldName}\\b`));
+                if (nameMatch) {
+                    const startPos = new vscode.Position(lineNum, match.index + nameMatch.index!);
+                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                    edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+                }
+            }
+        }
+    }
+
+    private async renameNamespace(
+        document: vscode.TextDocument,
+        oldName: string,
+        newName: string,
+        edit: vscode.WorkspaceEdit
+    ): Promise<void> {
+        
+        // Find all references across the workspace for namespaces
+        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}');
+        
+        for (const file of files) {
+            const doc = await vscode.workspace.openTextDocument(file);
+            const text = doc.getText();
+            const lines = text.split('\n');
+            
+            for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+                const line = lines[lineNum];
+                
+                // Find namespace definitions
+                const nsDefPattern = new RegExp(`\\bnamespace\\s+(create|eval)\\s+${oldName}\\b`, 'g');
+                let match;
+                while ((match = nsDefPattern.exec(line)) !== null) {
+                    const startPos = new vscode.Position(lineNum, match.index + match[0].indexOf(oldName));
+                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
+                }
+
+                // Find qualified names using the namespace
+                const qualifiedPattern = new RegExp(`\\b${oldName}::[a-zA-Z_][a-zA-Z0-9_]*`, 'g');
+                while ((match = qualifiedPattern.exec(line)) !== null) {
+                    const startPos = new vscode.Position(lineNum, match.index);
+                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
+                }
+
+                // Find namespace current/which commands
+                const nsCmdPattern = new RegExp(`\\bnamespace\\s+(current|which).*${oldName}`, 'g');
+                while ((match = nsCmdPattern.exec(line)) !== null) {
+                    const nameMatch = line.substring(match.index).match(new RegExp(`\\b${oldName}\\b`));
+                    if (nameMatch) {
+                        const startPos = new vscode.Position(lineNum, match.index + nameMatch.index!);
+                        const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
+                        edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
+                    }
+                }
+            }
+        }
+    }
+}
