@@ -1,14 +1,7 @@
 import * as vscode from 'vscode';
-import { spawn, ChildProcess } from 'child_process';
 
 export class TclREPLProvider {
     private _terminal: vscode.Terminal | undefined;
-    private _tclProcess: ChildProcess | undefined;
-    private _outputChannel: vscode.OutputChannel;
-
-    constructor() {
-        this._outputChannel = vscode.window.createOutputChannel('TCL REPL');
-    }
 
     public async startREPL(): Promise<void> {
         if (this._terminal) {
@@ -21,70 +14,17 @@ export class TclREPLProvider {
         const tclPath = config.get<string>('repl.tclPath', 'tclsh');
 
         try {
-            // Create a pseudo-terminal for the REPL
-            const writeEmitter = new vscode.EventEmitter<string>();
-            const pty: vscode.Pseudoterminal = {
-                onDidWrite: writeEmitter.event,
-                open: () => {
-                    this.startTclProcess(tclPath, writeEmitter);
-                },
-                close: () => {
-                    this.stopTclProcess();
-                },
-                handleInput: (data: string) => {
-                    if (this._tclProcess && this._tclProcess.stdin) {
-                        this._tclProcess.stdin.write(data);
-                    }
-                }
-            };
-
+            // Create a simple terminal that runs tclsh directly
             this._terminal = vscode.window.createTerminal({
                 name: 'TCL REPL',
-                pty: pty
+                shellPath: tclPath,
+                iconPath: new vscode.ThemeIcon('terminal'),
+                color: new vscode.ThemeColor('terminal.ansiBlue')
             });
 
             this._terminal.show();
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to start TCL REPL: ${error}`);
-        }
-    }
-
-    private startTclProcess(tclPath: string, writeEmitter: vscode.EventEmitter<string>): void {
-        this._tclProcess = spawn(tclPath, [], {
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        if (!this._tclProcess.pid) {
-            writeEmitter.fire('Failed to start TCL interpreter\r\n');
-            return;
-        }
-
-        writeEmitter.fire('TCL REPL started. Type TCL commands and press Enter.\r\n');
-        writeEmitter.fire('Type "exit" to close the REPL.\r\n\r\n');
-        writeEmitter.fire('% ');
-
-        this._tclProcess.stdout?.on('data', (data) => {
-            const output = data.toString();
-            writeEmitter.fire(output);
-            if (!output.endsWith('% ')) {
-                writeEmitter.fire('\r\n% ');
-            }
-        });
-
-        this._tclProcess.stderr?.on('data', (data) => {
-            writeEmitter.fire(`Error: ${data.toString()}\r\n% `);
-        });
-
-        this._tclProcess.on('exit', (code) => {
-            writeEmitter.fire(`\r\nTCL process exited with code ${code}\r\n`);
-            this._tclProcess = undefined;
-        });
-    }
-
-    private stopTclProcess(): void {
-        if (this._tclProcess) {
-            this._tclProcess.kill();
-            this._tclProcess = undefined;
         }
     }
 
@@ -115,16 +55,10 @@ export class TclREPLProvider {
         // Start REPL if not already running
         if (!this._terminal) {
             await this.startREPL();
-            // Wait a moment for the REPL to initialize
-            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
-        // Send the text to the REPL
-        if (this._tclProcess && this._tclProcess.stdin) {
-            this._tclProcess.stdin.write(text + '\n');
-        }
-
-        // Show the terminal
+        // Send the text to the terminal
+        this._terminal?.sendText(text);
         this._terminal?.show();
     }
 
@@ -143,25 +77,15 @@ export class TclREPLProvider {
         // Start REPL if not already running
         if (!this._terminal) {
             await this.startREPL();
-            // Wait a moment for the REPL to initialize
-            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         // Source the file in the REPL
-        if (this._tclProcess && this._tclProcess.stdin) {
-            this._tclProcess.stdin.write(`source "${filePath}"\n`);
-        }
-
-        // Show the terminal
+        this._terminal?.sendText(`source "${filePath}"`);
         this._terminal?.show();
     }
 
     public dispose(): void {
-        this.stopTclProcess();
-        this._outputChannel.dispose();
-        if (this._terminal) {
-            this._terminal.dispose();
-        }
+        // Terminal will be disposed automatically by VS Code
     }
 }
 

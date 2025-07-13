@@ -2,7 +2,7 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -21,7 +21,9 @@
     "url": "https://github.com/yourusername/tcl-vscode"
   },
   "activationEvents": [
-    "onLanguage:tcl"
+    "onLanguage:tcl",
+    "onDebugResolve:tcl",
+    "onDebugInitialConfigurations"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -95,61 +97,118 @@
           "type": "string",
           "default": "tclsh",
           "description": "Path to TCL interpreter for running tests"
+        },
+        "tcl.interpreter.path": {
+          "type": "string",
+          "default": "tclsh",
+          "description": "Path to the default TCL interpreter"
+        },
+        "tcl.interpreters.customPaths": {
+          "type": "array",
+          "default": [],
+          "description": "Custom TCL interpreter paths"
+        },
+        "tcl.packages.autoDiscovery": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically discover TCL packages in workspace"
         }
       }
     },
     "commands": [
       {
         "command": "tcl.formatDocument",
-        "title": "Format TCL Document"
+        "title": "TCL: Format Document"
       },
       {
         "command": "tcl.startREPL",
-        "title": "Start TCL REPL"
+        "title": "TCL: Start REPL"
       },
       {
         "command": "tcl.evaluateSelection",
-        "title": "Evaluate Selection in TCL REPL"
+        "title": "TCL: Evaluate Selection in REPL"
       },
       {
         "command": "tcl.runCurrentFile",
-        "title": "Run Current File in TCL REPL"
+        "title": "TCL: Run Current File in REPL"
       },
       {
         "command": "tcl.runTests",
-        "title": "Run TCL Tests"
+        "title": "TCL: Run Tests"
       },
       {
         "command": "tcl.generateCoverage",
-        "title": "Generate Test Coverage"
+        "title": "TCL: Generate Test Coverage"
       },
       {
         "command": "tcl.clearCoverage",
-        "title": "Clear Coverage Data"
+        "title": "TCL: Clear Coverage Data"
       },
       {
         "command": "tcl.exportCoverageReport",
-        "title": "Export Coverage Report"
+        "title": "TCL: Export Coverage Report"
       },
       {
         "command": "tcl.extractProcedure",
-        "title": "Extract Procedure"
+        "title": "TCL: Extract Procedure"
       },
       {
         "command": "tcl.extractVariable",
-        "title": "Extract Variable"
+        "title": "TCL: Extract Variable"
       },
       {
         "command": "tcl.inlineVariable",
-        "title": "Inline Variable"
+        "title": "TCL: Inline Variable"
+      },
+      {
+        "command": "tcl.selectInterpreter",
+        "title": "TCL: Select Interpreter"
+      },
+      {
+        "command": "tcl.addCustomInterpreter",
+        "title": "TCL: Add Custom Interpreter"
+      },
+      {
+        "command": "tcl.refreshInterpreters",
+        "title": "TCL: Refresh Interpreters"
+      },
+      {
+        "command": "tcl.createPackage",
+        "title": "TCL: Create Package"
+      },
+      {
+        "command": "tcl.updatePackageIndex",
+        "title": "TCL: Update Package Index"
+      },
+      {
+        "command": "tcl.newProject",
+        "title": "TCL: New Project"
+      },
+      {
+        "command": "tcl.installDependencies",
+        "title": "TCL: Install Dependencies"
+      },
+      {
+        "command": "tcl.updateDependencies",
+        "title": "TCL: Update Dependencies"
+      },
+      {
+        "command": "tcl.refreshDependencies",
+        "title": "TCL: Refresh Dependencies"
+      },
+      {
+        "command": "tcl.createDependencyReport",
+        "title": "TCL: Create Dependency Report"
+      },
+      {
+        "command": "tcl.runBuild",
+        "title": "TCL: Run Build Task"
       }
     ],
     "debuggers": [
       {
         "type": "tcl",
         "label": "TCL Debug",
-        "program": "./out/debug/tclDebugAdapter.js",
-        "runtime": "node",
         "configurationAttributes": {
           "launch": {
             "required": [
@@ -222,15 +281,21 @@
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js"
   },
+  "dependencies": {
+    "vscode-debugadapter": "^1.51.0",
+    "vscode-debugprotocol": "^1.51.0"
+  },
   "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.10",
     "@types/node": "16.x",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "@vscode/test-electron": "^2.2.0",
     "eslint": "^8.28.0",
-    "typescript": "^4.9.3",
-    "vscode-debugadapter": "^1.51.0",
-    "vscode-debugprotocol": "^1.51.0"
+    "glob": "^11.0.3",
+    "mocha": "^11.7.1",
+    "typescript": "^4.9.3"
   }
 }

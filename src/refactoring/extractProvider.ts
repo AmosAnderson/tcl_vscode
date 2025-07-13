@@ -167,15 +167,23 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
             return;
         }
 
-        const variableName = document.getText(wordRange);
+        let variableName = document.getText(wordRange);
         
-        // Check if this is a variable reference (should start with $)
+        // Check if this is a variable reference or assignment
         const line = document.lineAt(position.line);
         const charBefore = position.character > 0 ? line.text[wordRange.start.character - 1] : '';
         
-        if (charBefore !== '$') {
-            vscode.window.showErrorMessage('Please select a variable reference (starting with $)');
-            return;
+        // If user selected $varname, remove the $
+        if (charBefore === '$') {
+            // User is on a variable reference, that's fine
+        } else {
+            // Check if this could be a variable assignment (set varname ...)
+            const lineText = line.text;
+            const setPattern = new RegExp(`\\bset\\s+${variableName}\\b`);
+            if (!setPattern.test(lineText)) {
+                vscode.window.showErrorMessage('Please select a variable name (in a set command or with $)');
+                return;
+            }
         }
 
         try {
@@ -346,16 +354,39 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
 
     public registerCommands(context: vscode.ExtensionContext): void {
         context.subscriptions.push(
-            vscode.commands.registerCommand('tcl.extractProcedure', (uri: vscode.Uri, range: vscode.Selection) => {
-                this.extractProcedure(uri, range);
+            vscode.commands.registerCommand('tcl.extractProcedure', async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showErrorMessage('No active editor');
+                    return;
+                }
+                if (editor.selection.isEmpty) {
+                    vscode.window.showErrorMessage('No code selected for extraction');
+                    return;
+                }
+                await this.extractProcedure(editor.document.uri, editor.selection);
             }),
 
-            vscode.commands.registerCommand('tcl.extractVariable', (uri: vscode.Uri, range: vscode.Selection) => {
-                this.extractVariable(uri, range);
+            vscode.commands.registerCommand('tcl.extractVariable', async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showErrorMessage('No active editor');
+                    return;
+                }
+                if (editor.selection.isEmpty) {
+                    vscode.window.showErrorMessage('No expression selected for extraction');
+                    return;
+                }
+                await this.extractVariable(editor.document.uri, editor.selection);
             }),
 
-            vscode.commands.registerCommand('tcl.inlineVariable', (uri: vscode.Uri, position: vscode.Position) => {
-                this.inlineVariable(uri, position);
+            vscode.commands.registerCommand('tcl.inlineVariable', async () => {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor) {
+                    vscode.window.showErrorMessage('No active editor');
+                    return;
+                }
+                await this.inlineVariable(editor.document.uri, editor.selection.active);
             })
         );
     }

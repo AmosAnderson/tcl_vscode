@@ -14,9 +14,9 @@ namespace eval ::myapp {
    # Calculate factorial
    proc factorial {n} {
       if {$n < = 1} {
-         return 1
+         test 1
       } else {
-         return [expr {$n * [factorial [expr {$n - 1}]]}]
+         test [expr {$n * [factorial [expr {$n - 1}]]}]
       }
    }
 

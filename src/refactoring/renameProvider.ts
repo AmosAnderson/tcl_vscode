@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
 
 export class TclRenameProvider implements vscode.RenameProvider {
     
@@ -19,6 +20,11 @@ export class TclRenameProvider implements vscode.RenameProvider {
         // Validate the old name is a valid TCL identifier
         if (!this.isValidTclIdentifier(oldName)) {
             throw new Error('Selected text is not a valid TCL identifier');
+        }
+
+        // Check if it's a built-in TCL command being used as a command
+        if (this.isBuiltinCommandInContext(document, position, oldName)) {
+            throw new Error(`Cannot rename built-in TCL command '${oldName}'`);
         }
 
         // Validate the new name
@@ -64,6 +70,11 @@ export class TclRenameProvider implements vscode.RenameProvider {
             throw new Error('Selected text is not a valid TCL identifier');
         }
 
+        // Check if it's a built-in TCL command being used as a command
+        if (this.isBuiltinCommandInContext(document, position, word)) {
+            throw new Error(`Cannot rename built-in TCL command '${word}'`);
+        }
+
         return {
             range: wordRange,
             placeholder: word
@@ -73,6 +84,82 @@ export class TclRenameProvider implements vscode.RenameProvider {
     private isValidTclIdentifier(name: string): boolean {
         // TCL identifiers can contain letters, digits, underscores, and colons (for namespaces)
         return /^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(name);
+    }
+
+    private isBuiltinCommand(name: string): boolean {
+        // Check against the list of built-in TCL commands
+        return TCL_BUILTIN_COMMANDS.some(cmd => cmd.name === name);
+    }
+
+    private isBuiltinCommandInContext(document: vscode.TextDocument, position: vscode.Position, word: string): boolean {
+        // First check if it's a built-in command
+        if (!this.isBuiltinCommand(word)) {
+            return false;
+        }
+
+        // Check the context to see if it's being used as a command
+        const line = document.lineAt(position.line);
+        const lineText = line.text;
+        const wordStart = position.character;
+        const wordEnd = wordStart + word.length;
+        
+        // Don't prevent renaming if it's a variable reference (preceded by $)
+        if (wordStart > 0 && lineText[wordStart - 1] === '$') {
+            return false;
+        }
+
+        // Don't prevent renaming if it's in a string literal
+        if (this.isInStringLiteral(lineText, wordStart)) {
+            return false;
+        }
+
+        // Don't prevent renaming if it's after "set" (variable assignment)
+        const setPattern = new RegExp(`\\bset\\s+${word}\\b`);
+        if (setPattern.test(lineText)) {
+            return false;
+        }
+
+        // Check if it's at the beginning of a command
+        const beforeWord = lineText.substring(0, wordStart).trim();
+        
+        // Command at start of line or after command separator
+        if (beforeWord === '' || beforeWord.endsWith(';') || beforeWord.endsWith('\n')) {
+            return true;
+        }
+
+        // Command after control structure keywords
+        const controlKeywords = /\b(if|while|for|foreach|catch|switch)\s*\{[^}]*$/;
+        if (controlKeywords.test(beforeWord)) {
+            return true;
+        }
+
+        // Command in brackets (command substitution)
+        const bracketPattern = /\[[^\]]*$/;
+        if (bracketPattern.test(beforeWord)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private isInStringLiteral(lineText: string, position: number): boolean {
+        let inQuotes = false;
+        let inBraces = 0;
+        
+        for (let i = 0; i < position; i++) {
+            const char = lineText[i];
+            const prevChar = i > 0 ? lineText[i - 1] : '';
+            
+            if (char === '"' && prevChar !== '\\') {
+                inQuotes = !inQuotes;
+            } else if (char === '{' && !inQuotes) {
+                inBraces++;
+            } else if (char === '}' && !inQuotes) {
+                inBraces--;
+            }
+        }
+        
+        return inQuotes || inBraces > 0;
     }
 
     private async getSymbolType(

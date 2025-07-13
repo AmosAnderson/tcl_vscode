@@ -12,6 +12,11 @@ import { TclTestProvider } from './testing/testProvider';
 import { TclCoverageProvider } from './testing/coverageProvider';
 import { TclRenameProvider } from './refactoring/renameProvider';
 import { TclExtractProvider } from './refactoring/extractProvider';
+import { TclInterpreterManager } from './tools/interpreterManager';
+import { TclPackageManager } from './tools/packageManager';
+import { TclProjectTemplates } from './tools/projectTemplates';
+import { TclTaskProviderManager } from './tools/taskProvider';
+import { TclDependencyManager } from './tools/dependencyManager';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('TCL Language Support is now active!');
@@ -146,13 +151,113 @@ export function activate(context: vscode.ExtensionContext) {
     // Register refactoring commands
     extractProvider.registerCommands(context);
 
-    // Register disposal for all providers
+    // Register Phase 6 features: Integration and Tools (lazy initialization)
+    let interpreterManager: TclInterpreterManager | undefined;
+    let packageManager: TclPackageManager | undefined;
+    let projectTemplates: TclProjectTemplates | undefined;
+    let taskProvider: TclTaskProviderManager | undefined;
+    let dependencyManager: TclDependencyManager | undefined;
+    let phase6Initialized = false;
+
+    const ensurePhase6Initialized = async () => {
+        if (phase6Initialized) return;
+        
+        try {
+            interpreterManager = new TclInterpreterManager();
+            packageManager = new TclPackageManager();
+            projectTemplates = new TclProjectTemplates();
+            taskProvider = new TclTaskProviderManager();
+            dependencyManager = new TclDependencyManager(packageManager);
+
+            await interpreterManager.initialize();
+            await packageManager.initialize();
+            await dependencyManager.initialize();
+            taskProvider.register(context);
+            
+            phase6Initialized = true;
+            
+            // Add to disposal
+            context.subscriptions.push(interpreterManager, packageManager, dependencyManager, taskProvider);
+        } catch (error) {
+            console.error('Phase 6 initialization failed:', error);
+        }
+    };
+
+    context.subscriptions.push(
+        // Interpreter management commands
+        vscode.commands.registerCommand('tcl.selectInterpreter', async () => {
+            await ensurePhase6Initialized();
+            interpreterManager?.selectInterpreter();
+        }),
+
+        vscode.commands.registerCommand('tcl.addCustomInterpreter', async () => {
+            await ensurePhase6Initialized();
+            interpreterManager?.addCustomInterpreter();
+        }),
+
+        vscode.commands.registerCommand('tcl.refreshInterpreters', async () => {
+            await ensurePhase6Initialized();
+            interpreterManager?.refreshInterpreters();
+        }),
+
+        // Package management commands
+        vscode.commands.registerCommand('tcl.createPackage', async () => {
+            await ensurePhase6Initialized();
+            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            if (workspaceFolder && packageManager) {
+                await packageManager.createPackageTcl(workspaceFolder.uri.fsPath);
+            } else if (!workspaceFolder) {
+                vscode.window.showErrorMessage('No workspace folder open');
+            }
+        }),
+
+        vscode.commands.registerCommand('tcl.updatePackageIndex', async () => {
+            await ensurePhase6Initialized();
+            packageManager?.updatePackageIndex();
+        }),
+
+        // Project template commands
+        vscode.commands.registerCommand('tcl.newProject', async () => {
+            await ensurePhase6Initialized();
+            projectTemplates?.showProjectWizard();
+        }),
+
+        // Dependency management commands
+        vscode.commands.registerCommand('tcl.installDependencies', async () => {
+            await ensurePhase6Initialized();
+            dependencyManager?.installDependencies();
+        }),
+
+        vscode.commands.registerCommand('tcl.updateDependencies', async () => {
+            await ensurePhase6Initialized();
+            dependencyManager?.updateDependencies();
+        }),
+
+        vscode.commands.registerCommand('tcl.refreshDependencies', async () => {
+            await ensurePhase6Initialized();
+            dependencyManager?.refreshDependencies();
+        }),
+
+        vscode.commands.registerCommand('tcl.createDependencyReport', async () => {
+            await ensurePhase6Initialized();
+            dependencyManager?.createDependencyReport();
+        }),
+
+        // Task management commands
+        vscode.commands.registerCommand('tcl.runBuild', () => {
+            vscode.commands.executeCommand('workbench.action.tasks.build');
+        })
+    );
+
+    // Register disposal for core providers
     context.subscriptions.push(
         diagnosticProvider,
         debugAdapterFactory,
         testProvider,
         coverageProvider
     );
+
+    // Phase 6 features are now initialized lazily when first used
 }
 
 export function deactivate() {}

@@ -52,15 +52,26 @@ export class TclConfigurationProvider implements vscode.DebugConfigurationProvid
                 request: "launch",
                 type: "tcl",
                 program: "${file}",
-                stopOnEntry: true
+                stopOnEntry: true,
+                tclPath: "tclsh",
+                cwd: "${workspaceFolder}"
             },
             {
                 name: "Launch TCL (No Stop)",
                 request: "launch", 
                 type: "tcl",
                 program: "${file}",
-                stopOnEntry: false
+                stopOnEntry: false,
+                tclPath: "tclsh",
+                cwd: "${workspaceFolder}"
             }
         ];
+    }
+
+    /**
+     * Called when VS Code needs initial debug configurations (e.g., when creating launch.json)
+     */
+    provideDebugConfigurationSnippets?(folder: vscode.WorkspaceFolder | undefined, token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration[]> {
+        return this.provideDebugConfigurations(folder, token);
     }
 }

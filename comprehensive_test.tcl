@@ -43,9 +43,9 @@ namespace eval ::myapp {
     # @param n - The number to calculate factorial for
     proc factorial {n} {
         if {$n <= 1} {
-            return 1
+            test 1
         } else {
-            return [expr {$n * [factorial [expr {$n - 1}]]}]
+            test [expr {$n * [factorial [expr {$n - 1}]]}]
         }
     }
     
@@ -60,7 +60,7 @@ namespace eval ::myapp {
         puts "Uppercase: $upper"
         puts "Words: $words"
         
-        return [list $length $upper $words]
+        test [list $length $upper $words]
     }
 }
 

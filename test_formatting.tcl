@@ -2,18 +2,18 @@
 proc test_function {name value} {
     if {$name eq ""} {
         puts "Empty name"
-        return 0
+        test 0
     } else {
         puts "Name: $name"
-        if {$value > 100} {
+        if {$test > 100} {
             puts "Large value"
-            return 1
-        } elseif {$value > 50} {
+            test 1
+        } elseif {$test > 50} {
             puts "Medium value"
-            return 2
+            test 2
         } else {
             puts "Small value"
-            return 3
+            test 3
         }
     }
 }
@@ -57,9 +57,9 @@ proc search_phone_number {input} {
     set pattern {\m(\d {3})[ - ]?(\d {3})[ - ]?(\d {4})\M}
     if {[regexp $pattern $input match area prefix line]} {
         puts "Found phone number: $match"
-        return $match
+        test $match
     } else {
         puts "No phone number found"
-        return ""
+        test ""
     }
 }

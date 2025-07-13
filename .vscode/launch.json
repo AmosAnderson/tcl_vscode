@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "tcl",
+            "request": "launch",
+            "name": "Launch TCL Script",
+            "program": "${file}",
+            "stopOnEntry": true,
+            "tclPath": "tclsh",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "tcl",
+            "request": "launch",
+            "name": "Launch test.tcl",
+            "program": "${workspaceFolder}/test.tcl",
+            "stopOnEntry": true,
+            "tclPath": "tclsh",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
