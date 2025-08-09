@@ -227,36 +227,60 @@ export class TclRenameProvider implements vscode.RenameProvider {
         newName: string,
         edit: vscode.WorkspaceEdit
     ): Promise<void> {
-        
-        // Find all references across the workspace
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}');
-        
-        for (const file of files) {
-            const doc = await vscode.workspace.openTextDocument(file);
-            const text = doc.getText();
-            const lines = text.split('\n');
-            
+        // Collect unique replacement ranges to avoid overlapping/duplicate edits.
+        interface Replacement { uri: vscode.Uri; range: vscode.Range; }
+        const seen = new Set<string>();
+        const replacements: Replacement[] = [];
+
+        const addReplacement = (uri: vscode.Uri, startPos: vscode.Position, endPos: vscode.Position) => {
+            const key = `${uri.toString()}|${startPos.line}|${startPos.character}|${endPos.character}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                replacements.push({ uri, range: new vscode.Range(startPos, endPos) });
+            }
+        };
+
+        const scanDocument = (doc: vscode.TextDocument) => {
+            const lines = doc.getText().split('\n');
             for (let lineNum = 0; lineNum < lines.length; lineNum++) {
                 const line = lines[lineNum];
-                
-                // Find procedure definitions
+                // Definitions
                 const procDefPattern = new RegExp(`\\bproc\\s+${oldName}\\b`, 'g');
-                let match;
+                let match: RegExpExecArray | null;
                 while ((match = procDefPattern.exec(line)) !== null) {
-                    const startPos = new vscode.Position(lineNum, match.index + match[0].indexOf(oldName));
+                    const startPos = new vscode.Position(lineNum, match.index + match[0].lastIndexOf(oldName));
                     const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
+                    addReplacement(doc.uri, startPos, endPos);
                 }
-
-                // Find procedure calls (at start of commands)
-                const procCallPattern = new RegExp(`(^|[\\s;])${oldName}\\b`, 'g');
+                // Calls (allow after whitespace, semicolon, brace, bracket)
+                const procCallPattern = new RegExp(`(^|[\n\r\t ;\\[{])${oldName}\\b`, 'g');
                 while ((match = procCallPattern.exec(line)) !== null) {
+                    const precedingIndex = match.index + (match[1] ? match[1].length : 0) - 5;
+                    const contextStart = Math.max(0, precedingIndex);
+                    const context = line.substring(contextStart, match.index).toLowerCase();
+                    if (/proc\s+$/.test(context)) continue;
                     const offset = match[1] ? match[1].length : 0;
                     const startPos = new vscode.Position(lineNum, match.index + offset);
                     const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
+                    addReplacement(doc.uri, startPos, endPos);
                 }
             }
+        };
+
+        // Scan current document (even if unsaved / untitled)
+        scanDocument(document);
+
+        // Scan workspace files
+        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}');
+        for (const file of files) {
+            if (file.toString() === document.uri.toString()) continue;
+            const doc = await vscode.workspace.openTextDocument(file);
+            scanDocument(doc);
+        }
+
+        // Apply edits
+        for (const rep of replacements) {
+            edit.replace(rep.uri, rep.range, newName);
         }
     }
 

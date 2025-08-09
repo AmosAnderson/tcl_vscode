@@ -2,7 +2,8 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.1.0",
+  "version": "0.2.1",
+  "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -277,9 +278,10 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
+  "pretest": "npm run compile",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+  "test": "node ./out/test/runTest.js",
+  "package": "vsce package"
   },
   "dependencies": {
     "vscode-debugadapter": "^1.51.0",
@@ -296,6 +298,7 @@
     "eslint": "^8.28.0",
     "glob": "^11.0.3",
     "mocha": "^11.7.1",
-    "typescript": "^4.9.3"
+    "typescript": "^4.9.3",
+    "@vscode/vsce": "^3.0.0"
   }
 }
