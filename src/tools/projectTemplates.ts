@@ -168,7 +168,7 @@ This project was created using the VS Code TCL extension.
 
 ## License
 
-[Your license here]
+MIT License. See LICENSE for details.
 `
                 }
             ]
@@ -524,7 +524,7 @@ Processes the input data and returns the result.
 
 ## License
 
-[Your license here]
+MIT License. See LICENSE for details.
 `
                 }
             ]

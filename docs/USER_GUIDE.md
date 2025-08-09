@@ -34,7 +34,7 @@ After installation, the extension automatically activates when you open any TCL 
 - String interpolation and escape sequences
 
 ### ✨ IntelliSense
-- **Auto-completion**: 100+ built-in TCL commands with signatures
+- **Auto-completion**: 150+ built-in TCL commands with signatures
 - **Hover Information**: Command documentation and variable values
 - **Signature Help**: Parameter hints while typing
 - **Go to Definition**: Navigate to procedure definitions (F12)
@@ -370,5 +370,5 @@ namespace eval ::mypackage {
 
 - Read the [Configuration Reference](CONFIGURATION.md) for detailed settings
 - Check the [FAQ](FAQ.md) for common questions
-- Report issues on [GitHub](https://github.com/yourusername/tcl-vscode)
+- Report issues on [GitHub](https://github.com/AmosAnderson/tcl_vscode/issues)
 - Contribute to the project - see [Contributing Guide](CONTRIBUTING.md)

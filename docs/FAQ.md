@@ -325,7 +325,7 @@ When reporting issues, include:
 
 ### Where to Get Help
 
-1. **GitHub Issues**: [github.com/yourusername/tcl-vscode/issues](https://github.com/yourusername/tcl-vscode/issues)
+1. **GitHub Issues**: [github.com/AmosAnderson/tcl_vscode/issues](https://github.com/AmosAnderson/tcl_vscode/issues)
 2. **VS Code TCL Community**: Search or ask in VS Code forums
 3. **TCL Community**: 
    - [TCL Wiki](https://wiki.tcl-lang.org)

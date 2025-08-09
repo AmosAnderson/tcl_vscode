@@ -18,7 +18,7 @@
   "publisher": "amos-anderson",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/tcl-vscode"
+    "url": "https://github.com/AmosAnderson/tcl_vscode"
   },
   "activationEvents": [
     "onLanguage:tcl",

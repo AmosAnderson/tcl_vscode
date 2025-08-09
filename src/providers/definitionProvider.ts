@@ -42,9 +42,15 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
         return null;
     }
 
+    private escapeRegex(lit: string): string {
+        return lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     private findProcedureInDocument(document: vscode.TextDocument, procName: string): vscode.Location | null {
         const text = document.getText();
-        const procRegex = new RegExp(`\\bproc\\s+(${procName})\\s*{`, 'g');
+        const name = this.escapeRegex(procName);
+        // Match: proc <name> {args} {body}
+        const procRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{[^}]*\\}\\s*\\{`, 'g');
         const match = procRegex.exec(text);
         
         if (match) {
@@ -59,13 +65,13 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
     private async findProcedureInWorkspace(procName: string): Promise<vscode.Location[]> {
         const locations: vscode.Location[] = [];
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-        
+    const name = this.escapeRegex(procName);
+        const procRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{[^}]*\\}\\s*\\{`, 'g');
+
         for (const file of files) {
             try {
                 const document = await vscode.workspace.openTextDocument(file);
                 const text = document.getText();
-                
-                const procRegex = new RegExp(`\\bproc\\s+(${procName})\\s*{`, 'g');
                 let match;
                 
                 while ((match = procRegex.exec(text)) !== null) {
@@ -85,12 +91,13 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
     private async findNamespaceInWorkspace(nsName: string): Promise<vscode.Location | null> {
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
         
+        const escaped = this.escapeRegex(nsName);
         for (const file of files) {
             try {
                 const document = await vscode.workspace.openTextDocument(file);
                 const text = document.getText();
                 
-                const nsRegex = new RegExp(`namespace\\s+eval\\s+(::)?${nsName}\\s*{`, 'g');
+                const nsRegex = new RegExp(`namespace\\s+eval\\s+(::)?${escaped}\\s*{`, 'g');
                 const match = nsRegex.exec(text);
                 
                 if (match) {

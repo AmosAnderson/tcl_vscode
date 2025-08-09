@@ -43,7 +43,7 @@ Look for issues labeled `good first issue` or `help wanted`.
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/tcl-vscode.git
+git clone https://github.com/AmosAnderson/tcl_vscode.git
 cd tcl-vscode
 ```
 

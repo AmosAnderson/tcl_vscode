@@ -31,7 +31,7 @@ export class TclCoverageProvider {
         });
 
         // Listen for active editor changes to update coverage display
-        vscode.window.onDidChangeActiveTextEditor(this.updateCoverageDisplay.bind(this));
+    vscode.window.onDidChangeActiveTextEditor(this.updateCoverageDisplay.bind(this));
     }
 
     public async generateCoverage(testFiles: string[]): Promise<void> {
@@ -240,7 +240,9 @@ puts "Coverage data saved"
         const uncoveredRanges: vscode.Range[] = [];
 
         for (const [lineNum, lineData] of coverage.lines) {
-            const range = new vscode.Range(lineNum - 1, 0, lineNum - 1, 0);
+            const lineIndex = lineNum - 1;
+            const lineText = editor.document.lineAt(lineIndex).text;
+            const range = new vscode.Range(lineIndex, 0, lineIndex, lineText.length);
             
             if (lineData.covered) {
                 coveredRanges.push(range);

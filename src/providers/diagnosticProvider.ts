@@ -134,15 +134,34 @@ export class TclDiagnosticProvider {
             // Skip comments and empty lines
             if (line.startsWith('#') || line.length === 0) continue;
 
-            // Check for missing space after if/while/for
-            const controlKeywords = /^(if|while|for|foreach|switch)\(/;
-            if (controlKeywords.test(line)) {
-                const match = line.match(controlKeywords);
-                if (match) {
-                    const pos = lines[lineNum].indexOf(match[0]);
-                    this.addDiagnostic(diagnostics, lineNum, pos, pos + match[0].length,
-                        `Missing space after '${match[1]}'`, vscode.DiagnosticSeverity.Warning);
-                }
+            // Warn on missing space before brace (e.g., if{ ... })
+            const missingSpaceBeforeBrace = /\b(if|while|for|foreach|switch)\{/;
+            if (missingSpaceBeforeBrace.test(line)) {
+                const m = line.match(missingSpaceBeforeBrace)!;
+                const pos = lines[lineNum].indexOf(m[0]) + m[1].length;
+                this.addDiagnostic(
+                    diagnostics,
+                    lineNum,
+                    pos,
+                    pos + 1,
+                    `Missing space after '${m[1]}' before '{'`,
+                    vscode.DiagnosticSeverity.Warning
+                );
+            }
+
+            // Warn on parentheses after control keywords (Tcl prefers braces)
+            const parenAfterKeyword = /\b(if|while|for|foreach|switch)\s*\(/;
+            if (parenAfterKeyword.test(line)) {
+                const m = line.match(parenAfterKeyword)!;
+                const pos = lines[lineNum].indexOf(m[0]) + m[1].length;
+                this.addDiagnostic(
+                    diagnostics,
+                    lineNum,
+                    pos,
+                    pos + 1,
+                    `TCL uses braces for conditions: use "${m[1]} { ... }"`,
+                    vscode.DiagnosticSeverity.Warning
+                );
             }
 
             // Check for potential variable name issues

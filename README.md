@@ -121,4 +121,4 @@ See ROADMAP.md for planned features and development phases.
 
 ## License
 
-[Your chosen license]
+MIT License. See LICENSE for details.
