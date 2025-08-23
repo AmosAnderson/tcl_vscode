@@ -2,6 +2,13 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
+## [0.3.0] - 2025-08-23
+
+### Added / Improved
+- Explicit interpreter discovery coverage for Tcl versions 8.4 through 9.0
+
+### Internal
+
 ## [0.2.1] - 2025-08-09
 
 ### Fixed / Improved

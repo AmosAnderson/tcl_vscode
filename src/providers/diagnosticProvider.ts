@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as os from 'os';
+import * as path from 'path';
 
 const execAsync = promisify(exec);
 
@@ -196,10 +198,11 @@ export class TclDiagnosticProvider {
                 return; // tclsh not available, skip advanced validation
             }
 
-            // Create temporary file for validation
-            const tempFile = `/tmp/tcl_validate_${Date.now()}.tcl`;
+            // Create temporary file for validation (cross-platform)
             const fs = require('fs');
-            fs.writeFileSync(tempFile, document.getText());
+            const tmpDir = os.tmpdir();
+            const tempFile = path.join(tmpDir, `tcl_validate_${Date.now()}.tcl`);
+            fs.writeFileSync(tempFile, document.getText(), 'utf8');
 
             try {
                 // Run tclsh -n (syntax check only)
@@ -228,13 +231,16 @@ export class TclDiagnosticProvider {
     }
 
     private async findTclsh(): Promise<string | null> {
-        const possiblePaths = ['tclsh', 'tclsh8.6', 'tclsh8.5', '/usr/bin/tclsh', '/usr/local/bin/tclsh'];
-        
-        for (const path of possiblePaths) {
+        const candidates = process.platform === 'win32'
+            ? ['tclsh.exe', 'tclsh86.exe', 'tclsh85.exe', 'C:/Tcl/bin/tclsh.exe', 'C:/Tcl/bin/tclsh86.exe']
+            : ['tclsh', 'tclsh8.7', 'tclsh8.6', 'tclsh8.5', '/usr/bin/tclsh', '/usr/local/bin/tclsh'];
+
+        for (const candidate of candidates) {
             try {
-                await execAsync(`which ${path}`);
-                return path;
-            } catch (error) {
+                // Attempt running a tiny version print instead of relying on 'which' for portability
+                await execAsync(`"${candidate}" -c "puts $tcl_version"`);
+                return candidate;
+            } catch (_) {
                 continue;
             }
         }

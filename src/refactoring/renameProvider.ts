@@ -10,13 +10,20 @@ export class TclRenameProvider implements vscode.RenameProvider {
         token: vscode.CancellationToken
     ): Promise<vscode.WorkspaceEdit | null> {
         
-        const wordRange = document.getWordRangeAtPosition(position);
+        let wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {
             return null;
         }
 
-        const oldName = document.getText(wordRange);
-        
+        // Support variable references that include leading '$'
+        let oldName = document.getText(wordRange);
+        if (oldName.startsWith('$') && oldName.length > 1) {
+            // Adjust range to exclude '$'
+            const adjustedStart = new vscode.Position(wordRange.start.line, wordRange.start.character + 1);
+            wordRange = new vscode.Range(adjustedStart, wordRange.end);
+            oldName = oldName.substring(1);
+        }
+
         // Validate the old name is a valid TCL identifier
         if (!this.isValidTclIdentifier(oldName)) {
             throw new Error('Selected text is not a valid TCL identifier');
@@ -59,13 +66,18 @@ export class TclRenameProvider implements vscode.RenameProvider {
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Range | { range: vscode.Range; placeholder: string }> {
         
-        const wordRange = document.getWordRangeAtPosition(position);
+        let wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {
             throw new Error('Nothing to rename here');
         }
 
-        const word = document.getText(wordRange);
-        
+        let word = document.getText(wordRange);
+        if (word.startsWith('$') && word.length > 1) {
+            const adjustedStart = new vscode.Position(wordRange.start.line, wordRange.start.character + 1);
+            wordRange = new vscode.Range(adjustedStart, wordRange.end);
+            word = word.substring(1);
+        }
+
         if (!this.isValidTclIdentifier(word)) {
             throw new Error('Selected text is not a valid TCL identifier');
         }

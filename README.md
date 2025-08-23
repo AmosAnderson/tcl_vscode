@@ -65,25 +65,14 @@ Comprehensive syntax highlighting for TCL files including:
 ```bash
 npm run compile
 ```
-
-## Usage
-
-The extension automatically activates for files with the following extensions:
-- `.tcl`
-- `.tk`
-- `.tm`
-- `.test`
-
-## Configuration
-
 The extension provides several configuration options under `tcl.format.*`:
+## Features
+* Tcl interpreter discovery (system, ActiveTcl, TclKit) supporting versions 8.4 through 9.0
 
-- `tcl.format.enable`: Enable/disable TCL formatting (default: `true`)
+## Supported Tcl Versions
+
+The extension actively supports Tcl versions 8.4 through 9.0. Interpreters outside this range can still be added as custom paths, but a warning will be shown and some language features may not function correctly. Version detection prefers the newest supported interpreter discovered on your system.
 - `tcl.format.alignBraces`: Align opening and closing braces (default: `true`)
-- `tcl.format.spacesAroundOperators`: Add spaces around operators (default: `true`)
-- `tcl.format.spacesInsideBraces`: Add spaces inside braces (default: `true`)
-- `tcl.format.spacesInsideBrackets`: Add spaces inside brackets (default: `false`)
-
 ## Development
 
 ### Project Structure

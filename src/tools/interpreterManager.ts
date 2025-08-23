@@ -51,22 +51,23 @@ export class TclInterpreterManager {
 
     private async discoverSystemInterpreters(): Promise<void> {
         const possiblePaths = [
+            // Generic launcher (may be 8.x or 9.x)
             'tclsh',
-            'tclsh8.6',
-            'tclsh8.5',
-            'tclsh8.4',
-            '/usr/bin/tclsh',
-            '/usr/local/bin/tclsh',
-            '/opt/local/bin/tclsh',
+            // Explicit versioned binaries (add new versions here)
+            'tclsh9.0', 'tclsh9',
+            'tclsh8.7', 'tclsh8.6', 'tclsh8.5', 'tclsh8.4',
+            // Common Unix install roots
+            '/usr/bin/tclsh', '/usr/local/bin/tclsh', '/opt/local/bin/tclsh',
+            // Windows typical installs (update as needed for 9.x distributions)
             'C:\\Tcl\\bin\\tclsh.exe',
-            'C:\\Tcl\\bin\\tclsh86.exe',
-            'C:\\Tcl\\bin\\tclsh85.exe'
+            'C:\\Tcl\\bin\\tclsh90.exe', 'C:\\Tcl\\bin\\tclsh9.exe',
+            'C:\\Tcl\\bin\\tclsh87.exe', 'C:\\Tcl\\bin\\tclsh86.exe', 'C:\\Tcl\\bin\\tclsh85.exe'
         ];
 
         for (const tclPath of possiblePaths) {
             try {
                 const version = await this.getTclVersion(tclPath);
-                if (version) {
+                if (version && this.isSupportedVersion(version)) {
                     this.interpreters.push({
                         path: tclPath,
                         version: version,
@@ -74,6 +75,8 @@ export class TclInterpreterManager {
                         type: 'system',
                         isDefault: false
                     });
+                } else if (version) {
+                    this.outputChannel.appendLine(`[interpreterManager] Skipping unsupported TCL version ${version} at ${tclPath}`);
                 }
             } catch (error) {
                 // Path not found or not executable
@@ -98,7 +101,7 @@ export class TclInterpreterManager {
                         if (file.includes('tclkit') && !file.endsWith('.txt')) {
                             const fullPath = path.join(basePath, file);
                             const version = await this.getTclVersion(fullPath);
-                            if (version) {
+                            if (version && this.isSupportedVersion(version)) {
                                 this.interpreters.push({
                                     path: fullPath,
                                     version: version,
@@ -106,6 +109,8 @@ export class TclInterpreterManager {
                                     type: 'tclkit',
                                     isDefault: false
                                 });
+                            } else if (version) {
+                                this.outputChannel.appendLine(`[interpreterManager] Skipping unsupported TclKit version ${version} at ${fullPath}`);
                             }
                         }
                     }
@@ -129,7 +134,7 @@ export class TclInterpreterManager {
             if (fs.existsSync(tclPath)) {
                 try {
                     const version = await this.getTclVersion(tclPath);
-                    if (version) {
+                    if (version && this.isSupportedVersion(version)) {
                         this.interpreters.push({
                             path: tclPath,
                             version: version,
@@ -137,6 +142,8 @@ export class TclInterpreterManager {
                             type: 'activetcl',
                             isDefault: false
                         });
+                    } else if (version) {
+                        this.outputChannel.appendLine(`[interpreterManager] Skipping unsupported ActiveTcl version ${version} at ${tclPath}`);
                     }
                 } catch (error) {
                     // Path not executable
@@ -169,6 +176,23 @@ export class TclInterpreterManager {
         } catch (error) {
             return null;
         }
+    }
+
+    private isSupportedVersion(version: string): boolean {
+        if (version === 'custom') return true; // allow custom
+        // Normalize: keep first two numeric components
+        const match = version.match(/^(\d+)(?:\.(\d+))?/);
+        if (!match) return false;
+        const major = parseInt(match[1], 10);
+        const minor = match[2] ? parseInt(match[2], 10) : 0;
+        // Support range: 8.4 <= version <= 9.0
+        if (major === 8) {
+            return minor >= 4; // 8.4 - 8.x (treat any >=4 as supported)
+        }
+        if (major === 9) {
+            return minor <= 0; // currently only 9.0 tested
+        }
+        return false;
     }
 
     private compareVersions(v1: string, v2: string): number {
@@ -256,7 +280,12 @@ export class TclInterpreterManager {
 
     public async validateInterpreter(interpreterPath: string): Promise<boolean> {
         const version = await this.getTclVersion(interpreterPath);
-        return version !== null;
+        if (!version) return false;
+        const supported = this.isSupportedVersion(version);
+        if (!supported) {
+            vscode.window.showWarningMessage(`TCL interpreter version ${version} is outside supported range (8.4 - 9.0). Some features may not work.`);
+        }
+        return true;
     }
 
     private updateStatusBar(): void {

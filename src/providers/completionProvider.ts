@@ -4,6 +4,20 @@ import { TCL_BUILTIN_COMMANDS, STRING_SUBCOMMANDS, TCL_SNIPPETS } from '../data/
 export class TclCompletionItemProvider implements vscode.CompletionItemProvider {
     private procedureCache: Map<string, vscode.CompletionItem[]> = new Map();
     private variableCache: Map<string, vscode.CompletionItem[]> = new Map();
+    private changeSubscription: vscode.Disposable;
+
+    constructor() {
+        // Single listener to clear caches for changed documents to avoid leak of listeners per completion invocation
+        this.changeSubscription = vscode.workspace.onDidChangeTextDocument(e => {
+            const uri = e.document.uri.toString();
+            if (this.procedureCache.has(uri)) this.procedureCache.delete(uri);
+            if (this.variableCache.has(uri)) this.variableCache.delete(uri);
+        });
+    }
+
+    public dispose() {
+        this.changeSubscription.dispose();
+    }
 
     provideCompletionItems(
         document: vscode.TextDocument,
@@ -95,12 +109,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         // Cache the results
         this.procedureCache.set(uri, procedures);
         
-        // Clear cache on document change
-        vscode.workspace.onDidChangeTextDocument(e => {
-            if (e.document.uri.toString() === uri) {
-                this.procedureCache.delete(uri);
-            }
-        });
+    // (Cache invalidation handled by single subscription in constructor)
 
         return procedures;
     }
@@ -158,12 +167,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         // Cache the results
         this.variableCache.set(uri, variables);
         
-        // Clear cache on document change
-        vscode.workspace.onDidChangeTextDocument(e => {
-            if (e.document.uri.toString() === uri) {
-                this.variableCache.delete(uri);
-            }
-        });
+    // (Cache invalidation handled by single subscription in constructor)
 
         return variables;
     }

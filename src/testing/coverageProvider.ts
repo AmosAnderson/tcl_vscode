@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import * as fs from 'fs';
 
 interface CoverageData {
     file: string;
@@ -43,9 +44,10 @@ export class TclCoverageProvider {
             
             // Run the instrumented tests
             const coverageResults = await this.runCoverageAnalysis(coverageScript);
-            
-            // Parse coverage results
-            this.parseCoverageResults(coverageResults);
+            const fileData = await this.readCoverageFile();
+            const combined = coverageResults + '\n' + fileData;
+            // Parse combined results
+            this.parseCoverageResults(combined);
             
             // Update display
             this.updateCoverageDisplay();
@@ -66,33 +68,21 @@ export class TclCoverageProvider {
 set coverage_data [dict create]
 set coverage_files [list]
 
-# Override proc command to instrument procedures
-rename proc original_proc
+if {[info commands original_proc] eq ""} {rename proc original_proc}
 proc proc {name args body} {
     global coverage_data coverage_files
-    
-    # Record that this procedure exists
-    set caller_info [info frame -1]
-    if {[dict exists $caller_info file]} {
-        set file [dict get $caller_info file]
-        dict set coverage_data $file procs $name 0
-        if {$file ni $coverage_files} {
-            lappend coverage_files $file
-        }
-    }
-    
-    # Create instrumented body
+    set file [info script]
+    if {$file eq ""} { set file "<interactive>" }
+    if {$file ni $coverage_files} { lappend coverage_files $file }
     set instrumented_body ""
-    set line_num 1
-    foreach line [split $body "\\n"] {
+    set __cov_line 1
+    foreach line [split $body "\n"] {
         if {[string trim $line] ne ""} {
-            append instrumented_body "incr coverage_data(\${file}_line_\${line_num})\\n"
+            append instrumented_body "dict incr coverage_data $file line_$__cov_line\n"
         }
-        append instrumented_body "$line\\n"
-        incr line_num
+        append instrumented_body "$line\n"
+        incr __cov_line
     }
-    
-    # Create the original procedure with instrumentation
     original_proc $name $args $instrumented_body
 }
 
@@ -136,8 +126,17 @@ if {[catch {package require tcltest} error] == 0} {
     ::tcltest::runAllTests
 }
 
-# Save coverage data
+# Save coverage data & echo summary for parser
 save_coverage_data "coverage.dat"
+foreach file $coverage_files {
+    puts "FILE:$file"
+    foreach key [dict keys $coverage_data] {
+        if {[string match "$file line_*" $key]} {
+            set ln [string range $key [expr {[string last _ $key] + 1}] end]
+            puts "LINE:$ln:[dict get $coverage_data $key]"
+        }
+    }
+}
 puts "Coverage data saved"
 `;
     }
@@ -217,6 +216,15 @@ puts "Coverage data saved"
             coverage.percentage = coverage.totalLines > 0 
                 ? (coverage.coveredLines / coverage.totalLines) * 100 
                 : 0;
+        }
+    }
+
+    private async readCoverageFile(): Promise<string> {
+        try {
+            const data = await fs.promises.readFile('coverage.dat', 'utf8');
+            return data;
+        } catch {
+            return '';
         }
     }
 
