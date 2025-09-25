@@ -29,29 +29,33 @@ export class TclFormatter {
         const out: string[] = [];
         let indent = 0;
 
-        const splitMultiClosers = (line: string, currentIndent: number): string[] => {
-            // Turn '}}' into separate lines
-            if (/^}+$/ .test(line) && line.length > 1) {
-                return line.split('').map(_ => this.createIndent(--currentIndent >= 0 ? currentIndent : 0) + '}');
-            }
-            return [];
-        };
-
         for (let line of rawLines) {
             let trimmed = line.trim();
             if (trimmed === '') { out.push(''); continue; }
 
             // Apply spacing rules early (except on pure brace lines)
             if (!/^}+$/ .test(trimmed)) {
-                trimmed = this.applyOperatorSpacing(trimmed);
+                if (this.options.spacesAroundOperators) {
+                    trimmed = this.applyOperatorSpacing(trimmed);
+                }
+
+                trimmed = this.applyBraceSpacing(trimmed);
+                trimmed = this.applyBracketSpacing(trimmed);
             }
 
             // If the line is purely closing brace(s)
             if (/^}+$/ .test(trimmed)) {
-                // Decrease indent for each brace, emit each on its own line
-                for (let i = 0; i < trimmed.length; i++) {
-                    indent = Math.max(0, indent - 1);
-                    out.push(this.createIndent(indent) + '}');
+                const braceCount = trimmed.length;
+
+                if (this.options.alignBraces) {
+                    // Decrease indent for each brace, emit each on its own line
+                    for (let i = 0; i < braceCount; i++) {
+                        indent = Math.max(0, indent - 1);
+                        out.push(this.createIndent(indent) + '}');
+                    }
+                } else {
+                    indent = Math.max(0, indent - braceCount);
+                    out.push(this.createIndent(indent) + trimmed);
                 }
                 continue;
             }
@@ -113,6 +117,34 @@ export class TclFormatter {
             return `{${spaced}}`;
         });
         return line;
+    }
+
+    private applyBraceSpacing(line: string): string {
+        return line.replace(/\{([^{}\n]*)\}/g, (_m, inner) => {
+            const content = inner.trim();
+            if (!content) {
+                return '{}';
+            }
+
+            if (this.options.spacesInsideBraces) {
+                return `{ ${content} }`;
+            }
+            return `{${content}}`;
+        });
+    }
+
+    private applyBracketSpacing(line: string): string {
+        return line.replace(/\[([^\[\]\n]*)\]/g, (_m, inner) => {
+            const content = inner.trim();
+            if (!content) {
+                return '[]';
+            }
+
+            if (this.options.spacesInsideBrackets) {
+                return `[ ${content} ]`;
+            }
+            return `[${content}]`;
+        });
     }
 
     private createIndent(level: number): string {

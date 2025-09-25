@@ -3,7 +3,7 @@ import { TCL_BUILTIN_COMMANDS, STRING_SUBCOMMANDS, TCL_SNIPPETS } from '../data/
 
 export class TclCompletionItemProvider implements vscode.CompletionItemProvider {
     private procedureCache: Map<string, vscode.CompletionItem[]> = new Map();
-    private variableCache: Map<string, vscode.CompletionItem[]> = new Map();
+    private packageCache: vscode.CompletionItem[] | null = null;
     private changeSubscription: vscode.Disposable;
 
     constructor() {
@@ -11,7 +11,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         this.changeSubscription = vscode.workspace.onDidChangeTextDocument(e => {
             const uri = e.document.uri.toString();
             if (this.procedureCache.has(uri)) this.procedureCache.delete(uri);
-            if (this.variableCache.has(uri)) this.variableCache.delete(uri);
+            this.packageCache = null;
         });
     }
 
@@ -19,12 +19,12 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         this.changeSubscription.dispose();
     }
 
-    provideCompletionItems(
+    async provideCompletionItems(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
         context: vscode.CompletionContext
-    ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
+    ): Promise<vscode.CompletionItem[] | vscode.CompletionList> {
         const linePrefix = document.lineAt(position).text.substr(0, position.character);
         const completions: vscode.CompletionItem[] = [];
 
@@ -38,9 +38,16 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
             completions.push(...this.getNamespaceCompletions(document, linePrefix));
         }
 
+        const packageMatch = linePrefix.match(/\bpackage\s+(require|provide|present)\s+([\w:]*$)/);
+        if (packageMatch) {
+            const prefix = packageMatch[2] ?? '';
+            const packageCompletions = await this.getPackageCompletions(document, prefix);
+            completions.push(...packageCompletions);
+        }
+
         // Check if we're completing a variable reference
         if (linePrefix.match(/\$\w*$/)) {
-            completions.push(...this.getVariableCompletions(document));
+            completions.push(...this.getVariableCompletions(document, position));
         }
 
         // Add built-in commands
@@ -114,62 +121,109 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         return procedures;
     }
 
-    private getVariableCompletions(document: vscode.TextDocument): vscode.CompletionItem[] {
-        const uri = document.uri.toString();
-        
-        // Check cache first
-        if (this.variableCache.has(uri)) {
-            return this.variableCache.get(uri) || [];
-        }
-
-        const variables: vscode.CompletionItem[] = [];
+    private getVariableCompletions(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] {
         const text = document.getText();
+        const offset = document.offsetAt(position);
+        const beforePosition = text.slice(0, offset);
+
         const varNames = new Set<string>();
+        const addVar = (name: string) => {
+            if (name && !name.startsWith('{')) {
+                varNames.add(name);
+            }
+        };
 
-        // Match set commands
-        const setRegex = /\bset\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-        let match;
-        while ((match = setRegex.exec(text)) !== null) {
-            varNames.add(match[1]);
+        const currentProc = this.locateCurrentProcedure(text, offset);
+        if (currentProc) {
+            currentProc.args.forEach(addVar);
+            this.extractVariableNames(currentProc.body.slice(0, offset - currentProc.bodyStart), addVar);
+        } else {
+            this.extractVariableNames(beforePosition, addVar);
         }
 
-        // Match global commands
-        const globalRegex = /\bglobal\s+([a-zA-Z_][a-zA-Z0-9_\s]*)/g;
-        while ((match = globalRegex.exec(text)) !== null) {
-            match[1].split(/\s+/).forEach(v => varNames.add(v.trim()));
-        }
-
-        // Match variable commands
-        const variableRegex = /\bvariable\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-        while ((match = variableRegex.exec(text)) !== null) {
-            varNames.add(match[1]);
-        }
-
-        // Match proc arguments
-        const procRegex = /\bproc\s+[a-zA-Z_][a-zA-Z0-9_:]*\s*{([^}]*)}/g;
-        while ((match = procRegex.exec(text)) !== null) {
-            const args = match[1].trim().split(/\s+/);
-            args.forEach(arg => {
-                if (arg && !arg.startsWith('{')) {
-                    varNames.add(arg);
-                }
-            });
-        }
-
-        // Create completion items
-        varNames.forEach(varName => {
+        return Array.from(varNames).map(varName => {
             const item = new vscode.CompletionItem(varName, vscode.CompletionItemKind.Variable);
             item.detail = `$${varName}`;
             item.insertText = varName;
-            variables.push(item);
+            return item;
         });
+    }
 
-        // Cache the results
-        this.variableCache.set(uri, variables);
-        
-    // (Cache invalidation handled by single subscription in constructor)
+    private extractVariableNames(source: string, addVar: (name: string) => void) {
+        const setRegex = /\bset\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
+        let match: RegExpExecArray | null;
+        while ((match = setRegex.exec(source)) !== null) {
+            addVar(match[1]);
+        }
 
-        return variables;
+        const variableRegex = /\bvariable\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
+        while ((match = variableRegex.exec(source)) !== null) {
+            addVar(match[1]);
+        }
+
+        const globalRegex = /\bglobal\s+([a-zA-Z_][a-zA-Z0-9_\s]*)/g;
+        while ((match = globalRegex.exec(source)) !== null) {
+            match[1].split(/\s+/).forEach(name => addVar(name.trim()));
+        }
+    }
+
+    private locateCurrentProcedure(text: string, offset: number): { name: string; args: string[]; body: string; bodyStart: number; bodyEnd: number } | null {
+        const procRegex = /\bproc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*{([^}]*)}\s*{/g;
+        let match: RegExpExecArray | null;
+
+        while ((match = procRegex.exec(text)) !== null) {
+            const bodyStart = match.index + match[0].length;
+            const closeIndex = this.findMatchingBrace(text, bodyStart - 1);
+            if (closeIndex === -1) {
+                continue;
+            }
+
+            if (offset >= bodyStart && offset <= closeIndex) {
+                const args = match[2].trim() ? match[2].trim().split(/\s+/) : [];
+                const body = text.slice(bodyStart, closeIndex);
+                return {
+                    name: match[1],
+                    args,
+                    body,
+                    bodyStart,
+                    bodyEnd: closeIndex
+                };
+            }
+        }
+
+        return null;
+    }
+
+    private findMatchingBrace(text: string, openBraceIndex: number): number {
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = openBraceIndex; i < text.length; i++) {
+            const char = text[i];
+            const prev = i > 0 ? text[i - 1] : '';
+
+            if (!inString && char === '{') {
+                depth++;
+            } else if (!inString && char === '}') {
+                depth--;
+                if (depth === 0) {
+                    return i;
+                }
+            }
+
+            if (prev !== '\\' && (char === '"' || char === '\'')) {
+                if (inString && char === stringChar) {
+                    inString = false;
+                    stringChar = '';
+                } else if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                }
+            }
+        }
+
+        return -1;
     }
 
     private getNamespaceCompletions(document: vscode.TextDocument, linePrefix: string): vscode.CompletionItem[] {
@@ -199,6 +253,63 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         });
 
         return completions;
+    }
+
+    private async getPackageCompletions(document: vscode.TextDocument, prefix: string): Promise<vscode.CompletionItem[]> {
+        if (this.packageCache) {
+            return this.filterCompletionsByPrefix(this.packageCache, prefix);
+        }
+
+        const names = new Set<string>();
+        const gatherFromText = (text: string) => {
+            const regex = /\bpackage\s+(require|provide|present)\s+(?:-exact\s+)?([A-Za-z0-9_:.]+)/g;
+            let match: RegExpExecArray | null;
+            while ((match = regex.exec(text)) !== null) {
+                names.add(match[2]);
+            }
+        };
+
+        gatherFromText(document.getText());
+        vscode.workspace.textDocuments.forEach(doc => {
+            if (doc !== document && doc.languageId === 'tcl') {
+                gatherFromText(doc.getText());
+            }
+        });
+
+        const limit = 200;
+        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**', limit);
+        for (const uri of files) {
+            if (names.size > 512) {
+                break;
+            }
+            try {
+                if (vscode.workspace.textDocuments.find(doc => doc.uri.toString() === uri.toString())) {
+                    continue;
+                }
+                const bytes = await vscode.workspace.fs.readFile(uri);
+                const text = Buffer.from(bytes).toString('utf8');
+                gatherFromText(text);
+            } catch {
+                // Ignore inaccessible files
+            }
+        }
+
+        const items = Array.from(names).map(name => {
+            const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Module);
+            item.detail = `package ${name}`;
+            return item;
+        });
+
+        this.packageCache = items;
+        return this.filterCompletionsByPrefix(items, prefix);
+    }
+
+    private filterCompletionsByPrefix(items: vscode.CompletionItem[], prefix: string): vscode.CompletionItem[] {
+        if (!prefix) {
+            return items;
+        }
+        const lower = prefix.toLowerCase();
+        return items.filter(item => item.label.toString().toLowerCase().startsWith(lower));
     }
 
     private getSnippetCompletions(): vscode.CompletionItem[] {
