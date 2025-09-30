@@ -2,6 +2,11 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
+## [Unreleased]
+
+### Internal
+- Bumped development toolchain dependencies (TypeScript, ESLint, Mocha, VSCE, and assorted type packages) to their latest versions.
+
 ## [0.3.0] - 2025-08-23
 
 ### Added / Improved
