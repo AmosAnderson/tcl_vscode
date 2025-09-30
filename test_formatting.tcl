@@ -5,7 +5,7 @@ proc test_function { name value } {
         test 0
     } else {
         puts "Name: $name"
-        if { $test > 100 }{
+        if { $test > 100 } {
             puts "Large value"
             test 1
         } elseif { $test > 50 } {

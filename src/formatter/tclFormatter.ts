@@ -34,6 +34,8 @@ export class TclFormatter {
             if (trimmed === '') { out.push(''); continue; }
 
             // Apply spacing rules early (except on pure brace lines)
+            trimmed = this.applyStructuralSpacing(trimmed);
+
             if (!/^}+$/ .test(trimmed)) {
                 if (this.options.spacesAroundOperators) {
                     trimmed = this.applyOperatorSpacing(trimmed);
@@ -148,6 +150,29 @@ export class TclFormatter {
             }
             return `[${content}]`;
         });
+    }
+
+    private applyStructuralSpacing(line: string): string {
+        if (!line) {
+            return line;
+        }
+
+        // Ensure closing brace before else/elseif has spacing
+        line = line.replace(/}\s*(else|elseif|finally|catch)\b/gi, '} $1');
+
+        // Ensure keywords that start blocks have a space before the opening brace
+        line = line.replace(/\b(if|elseif|else|switch|while|for|foreach|try|catch|finally)\s*\{/gi, (_m, kw) => `${kw} {`);
+
+        // Ensure procedure definitions have spacing before argument braces
+        line = line.replace(/\bproc\s+([^\s{]+)\s*\{/gi, (_m, name) => `proc ${name} {`);
+
+        // Separate adjacent braces
+        line = line.replace(/}\s*\{/g, '} {');
+
+        // Ensure tokens directly before an opening brace are separated by a space (avoid $, @)
+        line = line.replace(/([A-Za-z0-9_\)\]])\s*\{/g, (_m, prev) => `${prev} {`);
+
+        return line;
     }
 
     private createIndent(level: number): string {

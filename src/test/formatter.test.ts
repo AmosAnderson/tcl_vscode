@@ -63,6 +63,31 @@ suite('TCL Formatter Tests', () => {
         const result = formatter.format(input);
         assert.strictEqual(result, expected);
     });
+
+    test('Should insert spacing around control flow braces', () => {
+        const input = [
+            'proc test_function{ name value }{',
+            '    if{$name eq "" }{',
+            '        puts "Empty name"',
+            '    }else{',
+            '        puts "Name: $name"',
+            '    }',
+            '}'
+        ].join('\n');
+
+        const expected = [
+            'proc test_function { name value } {',
+            '    if { $name eq "" } {',
+            '        puts "Empty name"',
+            '    } else {',
+            '        puts "Name: $name"',
+            '    }',
+            '}'
+        ].join('\n');
+
+        const result = formatter.format(input);
+        assert.strictEqual(result, expected);
+    });
 });
 
 suite('TCL Formatter Options', () => {
