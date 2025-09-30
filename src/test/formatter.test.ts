@@ -29,6 +29,27 @@ suite('TCL Formatter Tests', () => {
         assert.strictEqual(result, expected);
     });
 
+    test('Should indent else blocks correctly', () => {
+        const input = [
+            'if {$x>0} {',
+            'puts "positive"',
+            '} else {',
+            'puts "non-positive"',
+            '}'
+        ].join('\n');
+
+        const expected = [
+            'if { $x > 0 } {',
+            '    puts "positive"',
+            '} else {',
+            '    puts "non-positive"',
+            '}'
+        ].join('\n');
+
+        const result = formatter.format(input);
+        assert.strictEqual(result, expected);
+    });
+
     test('Should preserve string literals', () => {
         const input = 'puts "hello world"';
         const expected = 'puts "hello world"';

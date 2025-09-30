@@ -1,0 +1,1 @@
+This project is a VS Code extension that enables simple TCL development by providing syntax highlighting and some other nice features. 

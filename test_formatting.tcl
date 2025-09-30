@@ -1,14 +1,14 @@
 # Test file for formatter - intentionally poorly formatted
-proc test_function {name value} {
-    if {$name eq ""} {
+proc test_function { name value } {
+    if { $name eq "" } {
         puts "Empty name"
         test 0
     } else {
         puts "Name: $name"
-        if {$test > 100} {
+        if { $test > 100 } {
             puts "Large value"
             test 1
-        } elseif {$test > 50} {
+        } elseif { $test > 50 } {
             puts "Medium value"
             test 2
         } else {
@@ -34,18 +34,18 @@ namespace eval ::testns {
 }
 
 # More nested examples
-for {set i 0} {$i < 5} {incr i} {
+for { set i 0 } { $i < 5 } { incr i } {
     puts "Loop $i"
-    if {$i == 2} {
+    if { $i == 2 } {
         puts "Middle"
     } else {
         puts "Not middle"
     }
 }
 
-while {$x < 10} {
+while { $x < 10 } {
     incr x
-    if {$x % 2 == 0} {
+    if { $x % 2 == 0 } {
         puts "Even: $x"
     } else {
         puts "Odd: $x"
@@ -53,9 +53,9 @@ while {$x < 10} {
 }
 
 # Procedure to search for a phone number in a string using regex
-proc search_phone_number {input} {
-    set pattern {\m(\d {3})[ - ]?(\d {3})[ - ]?(\d {4})\M}
-    if {[regexp $pattern $input match area prefix line]} {
+proc search_phone_number { input } {
+    set pattern {\m(\d { 3 })[-]?(\d { 3 })[-]?(\d { 4 })\M}
+    if { [regexp $pattern $input match area prefix line] } {
         puts "Found phone number: $match"
         test $match
     } else {

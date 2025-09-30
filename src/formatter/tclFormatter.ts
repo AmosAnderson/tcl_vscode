@@ -60,9 +60,11 @@ export class TclFormatter {
                 continue;
             }
 
-            // If starts with '}' (mixed content) move one indent back first
-            if (trimmed.startsWith('}')) {
-                indent = Math.max(0, indent - 1);
+            const leadingClosings = this.countLeadingClosings(trimmed);
+
+            // If starts with closing brace(s), move indent back accordingly before emitting
+            if (leadingClosings > 0) {
+                indent = Math.max(0, indent - leadingClosings);
             }
 
             // Emit line
@@ -70,9 +72,10 @@ export class TclFormatter {
 
             // Count brace delta (ignore those inside strings via helper)
             const counts = this.countBraces(trimmed);
-            // Adjust indent for each opening brace that is not closed on same line at end
-            // Simple rule: indent += (opening - closing) but closing already handled if line began with '}'
-            indent += counts.opening - counts.closing;
+            const remainingClosings = Math.max(0, counts.closing - leadingClosings);
+
+            // Adjust indent for each opening brace that is not closed on the same line
+            indent += counts.opening - remainingClosings;
             if (indent < 0) indent = 0;
         }
 
@@ -190,5 +193,43 @@ export class TclFormatter {
         }
 
         return { opening, closing };
+    }
+
+    private countLeadingClosings(line: string): number {
+        let count = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            const prevChar = i > 0 ? line[i - 1] : '';
+
+            if (prevChar === '\\') {
+                continue;
+            }
+
+            if ((char === '"' || char === '\'') && !inString) {
+                inString = true;
+                stringChar = char;
+            } else if (char === stringChar && inString) {
+                inString = false;
+                stringChar = '';
+            }
+
+            if (inString) {
+                break;
+            }
+
+            if (char === '}') {
+                count++;
+                continue;
+            }
+
+            if (!/\s/.test(char)) {
+                break;
+            }
+        }
+
+        return count;
     }
 }
