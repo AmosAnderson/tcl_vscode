@@ -3,6 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -59,14 +60,26 @@ export class TclDiagnosticProvider {
                 const char = line[charPos];
                 const prevChar = charPos > 0 ? line[charPos - 1] : '';
 
-                // Handle string literals
-                if ((char === '"' || char === "'") && prevChar !== '\\') {
-                    if (!inString) {
-                        inString = true;
-                        stringChar = char;
-                    } else if (char === stringChar) {
-                        inString = false;
-                        stringChar = '';
+                // Handle string literals (check for unescaped quotes)
+                if ((char === '"' || char === "'")) {
+                    // Count consecutive backslashes before this character
+                    let backslashCount = 0;
+                    let checkPos = charPos - 1;
+                    while (checkPos >= 0 && line[checkPos] === '\\') {
+                        backslashCount++;
+                        checkPos--;
+                    }
+                    // Quote is escaped only if odd number of backslashes before it
+                    const isEscaped = backslashCount % 2 === 1;
+
+                    if (!isEscaped) {
+                        if (!inString) {
+                            inString = true;
+                            stringChar = char;
+                        } else if (char === stringChar) {
+                            inString = false;
+                            stringChar = '';
+                        }
                     }
                     continue;
                 }
@@ -199,22 +212,37 @@ export class TclDiagnosticProvider {
             }
 
             // Create temporary file for validation (cross-platform)
-            const fs = require('fs');
             const tmpDir = os.tmpdir();
             const tempFile = path.join(tmpDir, `tcl_validate_${Date.now()}.tcl`);
             fs.writeFileSync(tempFile, document.getText(), 'utf8');
 
             try {
-                // Run tclsh -n (syntax check only)
-                const { stderr } = await execAsync(`${tclshPath} -n "${tempFile}"`);
-                
-                if (stderr) {
-                    this.parseTclshErrors(stderr, diagnostics);
-                }
-            } catch (error: any) {
-                // tclsh returns non-zero exit code for syntax errors
-                if (error.stderr) {
-                    this.parseTclshErrors(error.stderr, diagnostics);
+                // Run tclsh with syntax-only check wrapper
+                // TCL doesn't have a -n flag like other shells, so we use a minimal wrapper
+                const checkScript = `
+if {[catch {source "${tempFile.replace(/\\/g, '/')}"} errorMsg]} {
+    puts stderr $errorMsg
+    exit 1
+}
+exit 0
+`;
+                const checkFile = path.join(tmpDir, `tcl_check_${Date.now()}.tcl`);
+                fs.writeFileSync(checkFile, checkScript, 'utf8');
+
+                try {
+                    await execAsync(`"${tclshPath}" "${checkFile}"`);
+                } catch (error: any) {
+                    // tclsh returns non-zero exit code for syntax errors
+                    if (error.stderr) {
+                        this.parseTclshErrors(error.stderr, diagnostics);
+                    }
+                } finally {
+                    // Clean up check script
+                    try {
+                        fs.unlinkSync(checkFile);
+                    } catch (e) {
+                        // Ignore cleanup errors
+                    }
                 }
             } finally {
                 // Clean up temp file

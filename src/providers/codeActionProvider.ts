@@ -40,11 +40,11 @@ export class TclCodeActionProvider implements vscode.CodeActionProvider {
                     `Add space after '${keyword}'`,
                     vscode.CodeActionKind.QuickFix
                 );
-                
+
                 const line = document.lineAt(range.start.line);
                 const text = line.text;
-                const keywordPos = text.indexOf(`${keyword}(`);
-                
+                const keywordPos = text.indexOf(`${keyword}{`);
+
                 if (keywordPos !== -1) {
                     const edit = new vscode.WorkspaceEdit();
                     const insertPos = new vscode.Position(range.start.line, keywordPos + keyword.length);

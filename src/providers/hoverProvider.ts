@@ -73,15 +73,23 @@ export class TclHoverProvider implements vscode.HoverProvider {
     } | null {
         const text = document.getText();
         const lines = text.split('\n');
-        
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            const procMatch = line.match(new RegExp(`\\bproc\\s+(${procName})\\s*{([^}]*)}`, 'i'));
-            
+            const procMatch = line.match(new RegExp(`\\bproc\\s+(${procName})\\s*\\{`, 'i'));
+
             if (procMatch) {
                 const name = procMatch[1];
-                const args = procMatch[2].trim();
-                
+
+                // Find the matching closing brace for arguments
+                const startIdx = text.indexOf(line) + line.indexOf('{');
+                const endIdx = this.findMatchingBrace(text, startIdx);
+
+                let args = '';
+                if (endIdx !== -1) {
+                    args = text.substring(startIdx + 1, endIdx).trim();
+                }
+
                 // Look for comment above the procedure
                 let comment = '';
                 for (let j = i - 1; j >= 0; j--) {
@@ -94,7 +102,7 @@ export class TclHoverProvider implements vscode.HoverProvider {
                         break;
                     }
                 }
-                
+
                 return {
                     name,
                     args,
@@ -102,8 +110,42 @@ export class TclHoverProvider implements vscode.HoverProvider {
                 };
             }
         }
-        
+
         return null;
+    }
+
+    private findMatchingBrace(text: string, openIdx: number): number {
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = openIdx; i < text.length; i++) {
+            const char = text[i];
+            const prevChar = i > 0 ? text[i - 1] : '';
+
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                } else if (char === stringChar) {
+                    inString = false;
+                    stringChar = '';
+                }
+                continue;
+            }
+
+            if (!inString) {
+                if (char === '{') {
+                    depth++;
+                } else if (char === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        return i;
+                    }
+                }
+            }
+        }
+        return -1;
     }
 
     private getVariableInfo(document: vscode.TextDocument, position: vscode.Position, varName: string): {
@@ -146,13 +188,21 @@ export class TclHoverProvider implements vscode.HoverProvider {
             }
             
             // Check for proc arguments
-            const procMatch = line.match(/\\bproc\\s+\\w+\\s*{([^}]*)}/);
+            const procMatch = line.match(/\bproc\s+\w+\s*\{/);
             if (procMatch) {
-                const args = procMatch[1].trim().split(/\\s+/);
-                if (args.includes(varName)) {
-                    return {
-                        type: 'procedure argument'
-                    };
+                // Find the argument list in braces
+                const argsStart = line.indexOf('{', line.indexOf('proc'));
+                if (argsStart !== -1) {
+                    const argsEnd = line.indexOf('}', argsStart);
+                    if (argsEnd !== -1) {
+                        const argsText = line.substring(argsStart + 1, argsEnd);
+                        const args = argsText.trim().split(/\s+/);
+                        if (args.includes(varName)) {
+                            return {
+                                type: 'procedure argument'
+                            };
+                        }
+                    }
                 }
             }
         }

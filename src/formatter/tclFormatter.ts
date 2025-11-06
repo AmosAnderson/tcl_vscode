@@ -125,31 +125,185 @@ export class TclFormatter {
     }
 
     private applyBraceSpacing(line: string): string {
-        return line.replace(/\{([^{}\n]*)\}/g, (_m, inner) => {
-            const content = inner.trim();
-            if (!content) {
-                return '{}';
+        // Don't apply spacing inside string literals
+        const result: string[] = [];
+        let inString = false;
+        let stringChar = '';
+        let i = 0;
+
+        while (i < line.length) {
+            const char = line[i];
+            const prevChar = i > 0 ? line[i - 1] : '';
+
+            // Track string state
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                } else if (char === stringChar) {
+                    inString = false;
+                    stringChar = '';
+                }
+                result.push(char);
+                i++;
+                continue;
             }
 
-            if (this.options.spacesInsideBraces) {
-                return `{ ${content} }`;
+            // If in string, don't modify
+            if (inString) {
+                result.push(char);
+                i++;
+                continue;
             }
-            return `{${content}}`;
-        });
+
+            // Process braces outside strings
+            if (char === '{') {
+                const closeIdx = this.findMatchingBraceInString(line, i);
+                if (closeIdx !== -1) {
+                    const inner = line.substring(i + 1, closeIdx);
+                    const trimmed = inner.trim();
+                    if (!trimmed) {
+                        result.push('{}');
+                    } else if (this.options.spacesInsideBraces) {
+                        result.push(`{ ${trimmed} }`);
+                    } else {
+                        result.push(`{${trimmed}}`);
+                    }
+                    i = closeIdx + 1;
+                    continue;
+                }
+            }
+
+            result.push(char);
+            i++;
+        }
+
+        return result.join('');
     }
 
     private applyBracketSpacing(line: string): string {
-        return line.replace(/\[([^\[\]\n]*)\]/g, (_m, inner) => {
-            const content = inner.trim();
-            if (!content) {
-                return '[]';
+        // Don't apply spacing inside string literals
+        const result: string[] = [];
+        let inString = false;
+        let stringChar = '';
+        let i = 0;
+
+        while (i < line.length) {
+            const char = line[i];
+            const prevChar = i > 0 ? line[i - 1] : '';
+
+            // Track string state
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                } else if (char === stringChar) {
+                    inString = false;
+                    stringChar = '';
+                }
+                result.push(char);
+                i++;
+                continue;
             }
 
-            if (this.options.spacesInsideBrackets) {
-                return `[ ${content} ]`;
+            // If in string, don't modify
+            if (inString) {
+                result.push(char);
+                i++;
+                continue;
             }
-            return `[${content}]`;
-        });
+
+            // Process brackets outside strings
+            if (char === '[') {
+                const closeIdx = this.findMatchingBracketInString(line, i);
+                if (closeIdx !== -1) {
+                    const inner = line.substring(i + 1, closeIdx);
+                    const trimmed = inner.trim();
+                    if (!trimmed) {
+                        result.push('[]');
+                    } else if (this.options.spacesInsideBrackets) {
+                        result.push(`[ ${trimmed} ]`);
+                    } else {
+                        result.push(`[${trimmed}]`);
+                    }
+                    i = closeIdx + 1;
+                    continue;
+                }
+            }
+
+            result.push(char);
+            i++;
+        }
+
+        return result.join('');
+    }
+
+    private findMatchingBraceInString(str: string, openIdx: number): number {
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = openIdx; i < str.length; i++) {
+            const char = str[i];
+            const prevChar = i > 0 ? str[i - 1] : '';
+
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                } else if (char === stringChar) {
+                    inString = false;
+                    stringChar = '';
+                }
+                continue;
+            }
+
+            if (!inString) {
+                if (char === '{') {
+                    depth++;
+                } else if (char === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        return i;
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
+    private findMatchingBracketInString(str: string, openIdx: number): number {
+        let depth = 0;
+        let inString = false;
+        let stringChar = '';
+
+        for (let i = openIdx; i < str.length; i++) {
+            const char = str[i];
+            const prevChar = i > 0 ? str[i - 1] : '';
+
+            if ((char === '"' || char === "'") && prevChar !== '\\') {
+                if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                } else if (char === stringChar) {
+                    inString = false;
+                    stringChar = '';
+                }
+                continue;
+            }
+
+            if (!inString) {
+                if (char === '[') {
+                    depth++;
+                } else if (char === ']') {
+                    depth--;
+                    if (depth === 0) {
+                        return i;
+                    }
+                }
+            }
+        }
+        return -1;
     }
 
     private applyStructuralSpacing(line: string): string {

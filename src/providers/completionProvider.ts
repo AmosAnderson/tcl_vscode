@@ -25,7 +25,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         token: vscode.CancellationToken,
         context: vscode.CompletionContext
     ): Promise<vscode.CompletionItem[] | vscode.CompletionList> {
-        const linePrefix = document.lineAt(position).text.substr(0, position.character);
+        const linePrefix = document.lineAt(position).text.substring(0, position.character);
         const completions: vscode.CompletionItem[] = [];
 
         // Check if we're completing a string subcommand
@@ -82,7 +82,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
 
     private getProcedureCompletions(document: vscode.TextDocument): vscode.CompletionItem[] {
         const uri = document.uri.toString();
-        
+
         // Check cache first
         if (this.procedureCache.has(uri)) {
             return this.procedureCache.get(uri) || [];
@@ -90,35 +90,88 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
 
         const procedures: vscode.CompletionItem[] = [];
         const text = document.getText();
-        const procRegex = /\bproc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*{([^}]*)}/g;
+
+        // Match proc declarations and extract arguments using brace matching
+        const procPattern = /\bproc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*\{/g;
         let match;
 
-        while ((match = procRegex.exec(text)) !== null) {
+        while ((match = procPattern.exec(text)) !== null) {
             const procName = match[1];
-            const args = match[2].trim();
-            
+            const argBraceStart = match.index + match[0].length - 1; // Position of opening '{'
+
+            // Find matching closing brace for arguments
+            const argBraceEnd = this.findMatchingBrace(text, argBraceStart);
+
+            let args = '';
+            if (argBraceEnd !== -1) {
+                args = text.substring(argBraceStart + 1, argBraceEnd).trim();
+            }
+
             const item = new vscode.CompletionItem(procName, vscode.CompletionItemKind.Function);
             item.detail = `proc ${procName} {${args}}`;
             item.documentation = new vscode.MarkdownString(`User-defined procedure`);
-            
+
             // Create snippet with argument placeholders
             if (args) {
-                const argList = args.split(/\s+/).filter(a => a.length > 0);
-                const snippetArgs = argList.map((arg, index) => `$\{${index + 1}:${arg}\}`).join(' ');
-                item.insertText = new vscode.SnippetString(`${procName} ${snippetArgs}`);
+                // Parse arguments (handle default values like {arg default})
+                const argList = this.parseArgumentList(args);
+                if (argList.length > 0) {
+                    const snippetArgs = argList.map((arg, index) => `$\{${index + 1}:${arg}\}`).join(' ');
+                    item.insertText = new vscode.SnippetString(`${procName} ${snippetArgs}`);
+                } else {
+                    item.insertText = procName;
+                }
             } else {
                 item.insertText = procName;
             }
-            
+
             procedures.push(item);
         }
 
         // Cache the results
         this.procedureCache.set(uri, procedures);
-        
-    // (Cache invalidation handled by single subscription in constructor)
+
+        // (Cache invalidation handled by single subscription in constructor)
 
         return procedures;
+    }
+
+    private parseArgumentList(argString: string): string[] {
+        // Simple argument parser that handles both "arg1 arg2" and "{arg1 default1} arg2"
+        const args: string[] = [];
+        let i = 0;
+        while (i < argString.length) {
+            // Skip whitespace
+            while (i < argString.length && /\s/.test(argString[i])) {
+                i++;
+            }
+            if (i >= argString.length) break;
+
+            if (argString[i] === '{') {
+                // Argument with default value
+                const closeIdx = argString.indexOf('}', i);
+                if (closeIdx !== -1) {
+                    const argDef = argString.substring(i + 1, closeIdx).trim();
+                    const argName = argDef.split(/\s+/)[0];
+                    if (argName) args.push(argName);
+                    i = closeIdx + 1;
+                } else {
+                    i++;
+                }
+            } else {
+                // Simple argument name
+                let j = i;
+                while (j < argString.length && !/\s/.test(argString[j]) && argString[j] !== '{') {
+                    j++;
+                }
+                const argName = argString.substring(i, j);
+                if (argName && argName !== 'args') {
+                    args.push(argName);
+                }
+                i = j;
+            }
+        }
+        return args;
     }
 
     private getVariableCompletions(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] {

@@ -161,7 +161,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const ensurePhase6Initialized = async () => {
         if (phase6Initialized) return;
-        
+
         try {
             interpreterManager = new TclInterpreterManager();
             packageManager = new TclPackageManager();
@@ -173,13 +173,37 @@ export function activate(context: vscode.ExtensionContext) {
             await packageManager.initialize();
             await dependencyManager.initialize();
             taskProvider.register(context);
-            
+
             phase6Initialized = true;
-            
+
             // Add to disposal
             context.subscriptions.push(interpreterManager, packageManager, dependencyManager, taskProvider);
         } catch (error) {
             console.error('Phase 6 initialization failed:', error);
+
+            // Clean up any partially initialized managers
+            try {
+                interpreterManager?.dispose();
+            } catch (e) { /* ignore */ }
+            try {
+                packageManager?.dispose();
+            } catch (e) { /* ignore */ }
+            try {
+                dependencyManager?.dispose();
+            } catch (e) { /* ignore */ }
+            try {
+                taskProvider?.dispose();
+            } catch (e) { /* ignore */ }
+
+            // Reset managers to undefined
+            interpreterManager = undefined;
+            packageManager = undefined;
+            projectTemplates = undefined;
+            taskProvider = undefined;
+            dependencyManager = undefined;
+
+            // Show error to user
+            vscode.window.showErrorMessage(`Failed to initialize TCL tools: ${error}`);
         }
     };
 
@@ -251,6 +275,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register disposal for core providers
     context.subscriptions.push(
+        completionProvider,
         diagnosticProvider,
         debugAdapterFactory,
         testProvider,

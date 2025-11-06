@@ -267,9 +267,9 @@ export class TclRenameProvider implements vscode.RenameProvider {
                 // Calls (allow after whitespace, semicolon, brace, bracket)
                 const procCallPattern = new RegExp(`(^|[\n\r\t ;\\[{])${oldName}\\b`, 'g');
                 while ((match = procCallPattern.exec(line)) !== null) {
-                    const precedingIndex = match.index + (match[1] ? match[1].length : 0) - 5;
-                    const contextStart = Math.max(0, precedingIndex);
-                    const context = line.substring(contextStart, match.index).toLowerCase();
+                    // Check if this is part of a proc definition by looking at more context
+                    const lineStart = Math.max(0, match.index - 10);
+                    const context = line.substring(lineStart, match.index).toLowerCase();
                     if (/proc\s+$/.test(context)) continue;
                     const offset = match[1] ? match[1].length : 0;
                     const startPos = new vscode.Position(lineNum, match.index + offset);
@@ -302,49 +302,57 @@ export class TclRenameProvider implements vscode.RenameProvider {
         newName: string,
         edit: vscode.WorkspaceEdit
     ): Promise<void> {
-        
+
         // For variables, we typically only rename within the current file/scope
         // unless it's a global variable
-        
+
+        // Track replacements to avoid duplicates
+        const seen = new Set<string>();
+        const addReplacement = (lineNum: number, startChar: number, endChar: number) => {
+            const key = `${lineNum}|${startChar}|${endChar}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                const startPos = new vscode.Position(lineNum, startChar);
+                const endPos = new vscode.Position(lineNum, endChar);
+                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+            }
+        };
+
         const text = document.getText();
         const lines = text.split('\n');
-        
+
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
-            
+
             // Find variable assignments (set command)
             const setPattern = new RegExp(`\\bset\\s+(${oldName})\\b`, 'g');
             let match;
             while ((match = setPattern.exec(line)) !== null) {
-                const startPos = new vscode.Position(lineNum, match.index + match[0].indexOf(oldName));
-                const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+                const startChar = match.index + match[0].indexOf(oldName);
+                addReplacement(lineNum, startChar, startChar + oldName.length);
             }
 
-            // Find variable references ($ prefix)
+            // Find variable references ($ prefix) - but not array references
             const varRefPattern = new RegExp(`\\$${oldName}\\b`, 'g');
             while ((match = varRefPattern.exec(line)) !== null) {
-                const startPos = new vscode.Position(lineNum, match.index + 1); // Skip the $
-                const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+                const startChar = match.index + 1; // Skip the $
+                addReplacement(lineNum, startChar, startChar + oldName.length);
             }
 
             // Find array variable references
             const arrayRefPattern = new RegExp(`\\$${oldName}\\(`, 'g');
             while ((match = arrayRefPattern.exec(line)) !== null) {
-                const startPos = new vscode.Position(lineNum, match.index + 1); // Skip the $
-                const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+                const startChar = match.index + 1; // Skip the $
+                addReplacement(lineNum, startChar, startChar + oldName.length);
             }
 
             // Find other variable-related commands (global, variable, upvar, etc.)
             const varCmdPattern = new RegExp(`\\b(global|variable|upvar)\\s+.*\\b${oldName}\\b`, 'g');
             while ((match = varCmdPattern.exec(line)) !== null) {
                 const nameMatch = line.substring(match.index).match(new RegExp(`\\b${oldName}\\b`));
-                if (nameMatch) {
-                    const startPos = new vscode.Position(lineNum, match.index + nameMatch.index!);
-                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                    edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
+                if (nameMatch && nameMatch.index !== undefined) {
+                    const startChar = match.index + nameMatch.index;
+                    addReplacement(lineNum, startChar, startChar + oldName.length);
                 }
             }
         }

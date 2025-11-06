@@ -1,5 +1,5 @@
-import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent, Thread, StackFrame, Source, Handles, Breakpoint } from 'vscode-debugadapter';
-import { DebugProtocol } from 'vscode-debugprotocol';
+import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent, Thread, StackFrame, Source, Handles, Breakpoint } from '@vscode/debugadapter';
+import { DebugProtocol } from '@vscode/debugprotocol';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -127,44 +127,58 @@ export class TclDebugSession extends DebugSession {
 
     private createDebugScript(programPath: string): string {
         const debugScriptPath = path.join(path.dirname(programPath), '.tcl_debug_wrapper.tcl');
-        
-        // Create a simple debug wrapper that adds some basic debugging capabilities
+
+        // Escape the program path for TCL
+        const escapedPath = programPath.replace(/\\/g, '/');
+
+        // Create a more functional debug wrapper
+        // This approach sources the program and captures basic execution info
         const debugScript = `
-# TCL Debug Wrapper
-set debug_program "${programPath}"
-set debug_line 1
-set debug_breakpoints [list]
-set debug_variables [dict create]
+# TCL Debug Wrapper - Simplified functional version
+# This provides basic execution tracking without full breakpoint support
 
-# Procedure to handle breakpoints
-proc debug_check_breakpoint {line} {
-    global debug_breakpoints debug_line
-    set debug_line $line
-    if {$line in $debug_breakpoints} {
-        puts "BREAKPOINT:$line"
-        flush stdout
-        # Wait for debugger command
-        gets stdin debug_cmd
-        return $debug_cmd
-    }
-    return "continue"
-}
+set debug_program "${escapedPath}"
+set debug_breakpoints [dict create]
+set debug_step_mode 0
+set debug_paused 0
 
-# Enhanced puts that reports line numbers
+# Store original puts
 rename puts original_puts
+
+# Custom puts that prefixes output
 proc puts {args} {
-    global debug_line
     if {[llength $args] == 1} {
-        original_puts "OUTPUT:$debug_line:[lindex $args 0]"
+        original_puts "OUTPUT:[lindex $args 0]"
+    } elseif {[llength $args] == 2 && [lindex $args 0] eq "-nonewline"} {
+        original_puts -nonewline "[lindex $args 1]"
     } else {
         original_puts {*}$args
     }
+    flush stdout
 }
 
-# Source the actual program
-if {[catch {source $debug_program} error]} {
-    original_puts "ERROR:$error"
+# Procedure to check if execution should pause (simplified)
+proc debug_should_pause {line} {
+    global debug_breakpoints debug_step_mode debug_paused
+
+    # In this simplified version, we don't have line-level control
+    # But we preserve the infrastructure for future enhancement
+    return 0
 }
+
+# Source and execute the program
+if {[catch {
+    source $debug_program
+} error]} {
+    original_puts "ERROR:$error"
+    global errorInfo
+    if {[info exists errorInfo]} {
+        original_puts "STACK:$errorInfo"
+    }
+    exit 1
+}
+
+exit 0
 `;
 
         fs.writeFileSync(debugScriptPath, debugScript);
@@ -174,20 +188,18 @@ if {[catch {source $debug_program} error]} {
     private handleStdout(data: string): void {
         const lines = data.split('\n');
         for (const line of lines) {
-            if (line.startsWith('BREAKPOINT:')) {
-                const lineNum = parseInt(line.split(':')[1]);
-                this._currentLine = lineNum;
-                this._isRunning = false;
-                this.sendEvent(new StoppedEvent('breakpoint', TclDebugSession.THREAD_ID));
-            } else if (line.startsWith('OUTPUT:')) {
-                const parts = line.split(':');
-                const output = parts.slice(2).join(':');
+            if (line.startsWith('OUTPUT:')) {
+                // Remove the OUTPUT: prefix
+                const output = line.substring(7);
                 this.sendEvent(new OutputEvent(output + '\n', 'stdout'));
             } else if (line.startsWith('ERROR:')) {
                 const error = line.substring(6);
-                this.sendEvent(new OutputEvent(error + '\n', 'stderr'));
-                this.sendEvent(new TerminatedEvent());
+                this.sendEvent(new OutputEvent('Error: ' + error + '\n', 'stderr'));
+            } else if (line.startsWith('STACK:')) {
+                const stack = line.substring(6);
+                this.sendEvent(new OutputEvent('Stack trace:\n' + stack + '\n', 'stderr'));
             } else if (line.trim()) {
+                // Regular output
                 this.sendEvent(new OutputEvent(line + '\n', 'stdout'));
             }
         }
@@ -201,19 +213,16 @@ if {[catch {source $debug_program} error]} {
         this._breakpoints.delete(path);
 
         // Create breakpoint objects
+        // Note: In this simplified implementation, breakpoints are acknowledged but not fully functional
+        // A complete implementation would require TCL code instrumentation
         const breakpoints: Breakpoint[] = clientLines.map(line => {
             const bp = new Breakpoint(true, line);
+            // Breakpoints are accepted but have limited functionality in this implementation
             return bp;
         });
 
         // Store breakpoints
         this._breakpoints.set(path, breakpoints);
-
-        // Send breakpoints to TCL process if running
-        if (this._tclProcess && this._tclProcess.stdin) {
-            const bpLines = clientLines.join(' ');
-            this._tclProcess.stdin.write(`set debug_breakpoints [list ${bpLines}]\n`);
-        }
 
         response.body = {
             breakpoints: breakpoints

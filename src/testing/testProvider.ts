@@ -25,11 +25,12 @@ export class TclTestProvider {
     private _outputChannel: vscode.OutputChannel;
     private _testController: vscode.TestController;
     private _testData = new WeakMap<vscode.TestItem, { file: string; line: number }>();
+    private _fileWatcher: vscode.FileSystemWatcher | undefined;
 
     constructor() {
         this._outputChannel = vscode.window.createOutputChannel('TCL Tests');
         this._testController = vscode.tests.createTestController('tclTests', 'TCL Tests');
-        
+
         // Set up test discovery and execution
         this._testController.createRunProfile(
             'Run TCL Tests',
@@ -50,11 +51,11 @@ export class TclTestProvider {
     }
 
     private setupFileWatcher(): void {
-        const watcher = vscode.workspace.createFileSystemWatcher('**/*.{test,tcl}');
-        
-        watcher.onDidCreate(uri => this.discoverTests(uri));
-        watcher.onDidChange(uri => this.discoverTests(uri));
-        watcher.onDidDelete(uri => this.removeTests(uri));
+        this._fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.{test,tcl}');
+
+        this._fileWatcher.onDidCreate(uri => this.discoverTests(uri));
+        this._fileWatcher.onDidChange(uri => this.discoverTests(uri));
+        this._fileWatcher.onDidDelete(uri => this.removeTests(uri));
     }
 
     public async discoverAllTests(): Promise<void> {
@@ -149,20 +150,20 @@ export class TclTestProvider {
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const testMatch = line.match(/(?:::)?tcltest::test\s+([^\s]+)/);
-            
+
             if (testMatch) {
-                const testName = testMatch[1].replace(/['"{}]/, '');
+                const testName = testMatch[1].replace(/['"{}]/g, '');
                 const testId = `${uri.toString()}::${testName}`;
-                
+
                 const testItem = this._testController.createTestItem(
                     testId,
                     testName,
                     uri
                 );
-                
+
                 testItem.range = new vscode.Range(i, 0, i, line.length);
                 this._testData.set(testItem, { file: uri.fsPath, line: i + 1 });
-                
+
                 testFile.children.add(testItem);
             }
         }
@@ -310,38 +311,53 @@ export class TclTestProvider {
         });
     }
 
+    private escapeTclString(str: string): string {
+        // Escape special characters for TCL strings
+        // Replace backslashes first, then other special characters
+        return str
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\$/g, '\\$')
+            .replace(/\[/g, '\\[')
+            .replace(/\]/g, '\\]');
+    }
+
     private createTestExecutionScript(file: string, testName: string): string {
+        // Escape file path and test name for safe TCL execution
+        const escapedFile = this.escapeTclString(file);
+        const escapedTestName = testName.replace(/[^a-zA-Z0-9_:]/g, '_');
+
         // Create a script that runs a specific test
         return `
 # Source the test file
-if {[catch {source "${file}"} error]} {
+if {[catch {source "${escapedFile}"} error]} {
     puts stderr "Error sourcing test file: $error"
     exit 1
 }
 
 # Try to run the specific test
-if {[info procs ${testName}] ne ""} {
+if {[info procs ${escapedTestName}] ne ""} {
     # It's a test procedure
-    if {[catch {${testName}} error]} {
-        puts stderr "Test ${testName} failed: $error"
+    if {[catch {${escapedTestName}} error]} {
+        puts stderr "Test ${escapedTestName} failed: $error"
         exit 1
     } else {
-        puts "Test ${testName} passed"
+        puts "Test ${escapedTestName} passed"
         exit 0
     }
 } else {
     # Try to run with tcltest if available
     if {[catch {package require tcltest} error] == 0} {
         # Run specific test if it exists
-        if {[catch {::tcltest::test ${testName}} error]} {
+        if {[catch {::tcltest::test ${escapedTestName}} error]} {
             puts stderr "tcltest failed: $error"
             exit 1
         } else {
-            puts "Test ${testName} completed"
+            puts "Test ${escapedTestName} completed"
             exit 0
         }
     } else {
-        puts stderr "Test ${testName} not found and tcltest not available"
+        puts stderr "Test ${escapedTestName} not found and tcltest not available"
         exit 1
     }
 }
@@ -351,5 +367,6 @@ if {[info procs ${testName}] ne ""} {
     public dispose(): void {
         this._outputChannel.dispose();
         this._testController.dispose();
+        this._fileWatcher?.dispose();
     }
 }

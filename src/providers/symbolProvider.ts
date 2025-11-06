@@ -17,16 +17,25 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
             const line = lines[lineNum];
 
             // Match procedure definitions
-            const procMatch = line.match(/^\s*proc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*{([^}]*)}/);
+            const procMatch = line.match(/^\s*proc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*\{/);
             if (procMatch) {
                 const procName = procMatch[1];
-                const args = procMatch[2].trim();
-                
+
+                // Extract arguments - look for simple case first
+                let args = '';
+                const simpleMatch = line.match(/^\s*proc\s+[a-zA-Z_][a-zA-Z0-9_:]*\s*\{([^}]*)\}/);
+                if (simpleMatch) {
+                    args = simpleMatch[1].trim();
+                } else {
+                    // Multi-line argument list - just indicate it has args
+                    args = '...';
+                }
+
                 const range = new vscode.Range(lineNum, 0, lineNum, line.length);
                 const selectionRange = new vscode.Range(
-                    lineNum, 
-                    line.indexOf(procName), 
-                    lineNum, 
+                    lineNum,
+                    line.indexOf(procName),
+                    lineNum,
                     line.indexOf(procName) + procName.length
                 );
 
@@ -190,26 +199,30 @@ export class TclWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvide
             const text = document.getText();
             
             // Search for procedures matching the query
-            const procRegex = new RegExp(`\\bproc\\s+(\\w*${query}\\w*)\\s*{([^}]*)}`, 'gi');
+            const procRegex = new RegExp(`\\bproc\\s+(\\w*${query}\\w*)\\s*\\{`, 'gi');
             let match;
-            
+
             while ((match = procRegex.exec(text)) !== null) {
                 const procName = match[1];
-                const args = match[2].trim();
                 const line = document.positionAt(match.index).line;
-                
+
+                // Try to extract args if they're on the same line
+                const lineText = document.lineAt(line).text;
+                const argsMatch = lineText.match(/\bproc\s+\w+\s*\{([^}]*)\}/);
+                const args = argsMatch ? argsMatch[1].trim() : '...';
+
                 const location = new vscode.Location(
                     file,
                     new vscode.Position(line, 0)
                 );
-                
+
                 const symbol = new vscode.SymbolInformation(
                     procName,
                     vscode.SymbolKind.Function,
                     args ? `{${args}}` : '',
                     location
                 );
-                
+
                 symbols.push(symbol);
             }
             
