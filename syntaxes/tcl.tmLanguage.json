@@ -50,7 +50,7 @@
             "patterns": [
                 {
                     "name": "comment.line.number-sign.tcl",
-                    "match": "#.*$"
+                    "match": "(?<=^|\\s|;)#.*$"
                 }
             ]
         },
@@ -59,7 +59,7 @@
                 {
                     "name": "string.quoted.double.tcl",
                     "begin": "\"",
-                    "end": "\"",
+                    "end": "(?<!\\\\)\"",
                     "patterns": [
                         {
                             "name": "constant.character.escape.tcl",
@@ -79,8 +79,8 @@
             "patterns": [
                 {
                     "name": "meta.block.tcl",
-                    "begin": "\\{",
-                    "end": "\\}",
+                    "begin": "(?<!\\\\)\\{",
+                    "end": "(?<!\\\\)\\}",
                     "patterns": [
                         {
                             "include": "$self"
@@ -258,8 +258,8 @@
             "patterns": [
                 {
                     "name": "meta.embedded.command.tcl",
-                    "begin": "\\[",
-                    "end": "\\]",
+                    "begin": "(?<!\\\\)\\[",
+                    "end": "(?<!\\\\)\\]",
                     "beginCaptures": {
                         "0": {
                             "name": "punctuation.section.embedded.begin.tcl"

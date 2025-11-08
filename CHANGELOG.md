@@ -2,6 +2,16 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
+## [0.3.7] - 2025-01-09
+
+### Fixed
+- Resolved runaway string scopes by ensuring double-quoted strings only terminate on unescaped quotes.
+- Corrected brace/bracket/embedded command regions to ignore escaped delimiters, preventing large sections from mis-highlighting.
+- Tightened line-comment detection so literal `#` characters inside brace-quoted blocks (e.g., regexes) no longer swallow the rest of the document.
+
+### Internal
+- Updated `package.json`/`package-lock.json` version metadata for the 0.3.7 build.
+
 ## [0.3.6] - 2025-01-08
 
 ### Added
