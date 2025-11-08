@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { TclDocumentFormattingEditProvider, TclDocumentRangeFormattingEditProvider } from './formatter/formattingProvider';
+import { TclFormattingProvider } from './formatter/formattingProvider';
 import { TclCompletionItemProvider } from './providers/completionProvider';
 import { TclDocumentSymbolProvider, TclWorkspaceSymbolProvider } from './providers/symbolProvider';
 import { TclDefinitionProvider, TclReferenceProvider } from './providers/definitionProvider';
@@ -28,12 +28,12 @@ export async function activate(context: vscode.ExtensionContext) {
     await activateLanguageServer(context);
 
     // Register formatting providers
-    const documentFormattingProvider = new TclDocumentFormattingEditProvider();
-    const rangeFormattingProvider = new TclDocumentRangeFormattingEditProvider();
+    const formattingProvider = new TclFormattingProvider();
 
     context.subscriptions.push(
-        vscode.languages.registerDocumentFormattingEditProvider('tcl', documentFormattingProvider),
-        vscode.languages.registerDocumentRangeFormattingEditProvider('tcl', rangeFormattingProvider)
+        vscode.languages.registerDocumentRangeFormattingEditProvider('tcl', formattingProvider, {
+            displayName: 'TCL Formatter (Built-in)'
+        })
     );
 
     // Register diagnostic and code action providers

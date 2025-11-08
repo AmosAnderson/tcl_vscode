@@ -58,7 +58,7 @@
             "patterns": [
                 {
                     "name": "string.quoted.double.tcl",
-                    "begin": "\"",
+                    "begin": "(?<!\\\\)\"",
                     "end": "(?<!\\\\)\"",
                     "patterns": [
                         {

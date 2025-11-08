@@ -2,7 +2,7 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
     "vscode": "^1.105.0"

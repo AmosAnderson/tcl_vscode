@@ -2,12 +2,23 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
+## [0.3.8] - 2025-01-10
+
+### Added
+- Augmented the formatter registration so the built-in formatter reports `TCL Formatter (Built-in)` in the VS Code picker and sits alongside the language-server formatter.
+- Documented formatter selection in the README to highlight the LSP vs. built-in choice.
+
+### Internal
+- Version bump to 0.3.8 to capture formatter metadata changes.
+- Double-quoted string patterns now ignore escaped quotes at both the start and end, fixing highlighting of regex literals such as `\"([^\"]+)\"`.
+
 ## [0.3.7] - 2025-01-09
 
 ### Fixed
 - Resolved runaway string scopes by ensuring double-quoted strings only terminate on unescaped quotes.
 - Corrected brace/bracket/embedded command regions to ignore escaped delimiters, preventing large sections from mis-highlighting.
 - Tightened line-comment detection so literal `#` characters inside brace-quoted blocks (e.g., regexes) no longer swallow the rest of the document.
+- Built-in formatter now registers with the display name **TCL Formatter (Built-in)** so it’s easy to distinguish from the language-server formatter when using “Format Document With…”.
 
 ### Internal
 - Updated `package.json`/`package-lock.json` version metadata for the 0.3.7 build.

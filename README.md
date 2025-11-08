@@ -31,6 +31,7 @@ Comprehensive syntax highlighting for TCL files including:
 - Automatic code formatting with configurable options
 - Format entire document or selected text
 - Format on save (configurable)
+- Choose between the built-in formatter (`TCL Formatter (Built-in)`) and the language-server formatter via **Format Document With…**
 - Customizable formatting rules:
   - Indentation (spaces/tabs)
   - Brace alignment
