@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Summary
 
-This is a comprehensive VS Code language extension for TCL (Tool Command Language) that provides syntax highlighting, IntelliSense, formatting, debugging, testing, and refactoring capabilities. The extension supports TCL, Tk (graphical toolkit), and Expect (automation framework).
+This is a comprehensive VS Code language extension for TCL (Tool Command Language) that provides syntax highlighting, IntelliSense, formatting, debugging, testing, and refactoring capabilities. The extension supports TCL, Tk (graphical toolkit), and Expect (automation framework). It includes full Language Server Protocol (LSP) integration for enhanced code intelligence.
 
-**Current Version:** 0.3.0
-**Target:** VS Code 1.74.0+
+**Current Version:** 0.3.6
+**Target:** VS Code 1.105.0+
 
 ## Common Development Commands
 
@@ -45,6 +45,7 @@ The extension follows a **layered, feature-driven architecture** organized into 
    - Works with built-in commands and user-defined code
 
 3. **Feature Layers**
+   - **Language Server** (`src/languageServer/`) - LSP client for enhanced IntelliSense
    - **Formatter** (`src/formatter/`) - Document formatting with configurable rules
    - **Debugger** (`src/debug/`) - Debug adapter, REPL, and process execution
    - **Testing** (`src/testing/`) - Test discovery, execution, and coverage
@@ -53,6 +54,7 @@ The extension follows a **layered, feature-driven architecture** organized into 
 
 4. **Extension Entry Point** (`src/extension.ts`)
    - Single activation point that orchestrates all feature registration
+   - Activates Language Server first (if enabled and available)
    - Lazy-loads Phase 6 features (tools) on-demand
    - Manages subscription lifecycle and cleanup
 
@@ -78,7 +80,13 @@ Phase 6 features (interpreter, package, and dependency managers) use lazy initia
 
 **Initialization Flow:**
 ```
-activate() → Phase 1-5 Initialization (synchronous)
+activate() → Language Server (Phase 0, async)
+           ├─ Check if enabled (tcl.languageServer.enable)
+           ├─ Check availability of tcl-language-server command
+           ├─ Start LSP client if available
+           └─ Fallback to built-in providers if not available
+
+           → Phase 1-5 Initialization (synchronous)
            ├─ Formatting Providers (document + range)
            ├─ Diagnostic & Code Action Providers
            ├─ IntelliSense Providers (completion, hover, definition, symbols)
@@ -86,7 +94,7 @@ activate() → Phase 1-5 Initialization (synchronous)
            ├─ REPL Commands
            ├─ Testing & Coverage Providers
            └─ Refactoring Providers (rename, extract)
-           
+
            → Phase 6 (Lazy Initialization on command)
              ├─ Interpreter Manager
              ├─ Package Manager
@@ -95,7 +103,64 @@ activate() → Phase 1-5 Initialization (synchronous)
              └─ Task Provider
 ```
 
-### 2.2 IntelliSense Providers (Working Together)
+### 2.2 Language Server Client
+
+**File:** `src/languageServer/client.ts`
+
+**Purpose:** Integrates with the external TCL Language Server for enhanced IntelliSense and code intelligence.
+
+**Architecture:**
+
+```
+activateLanguageServer()
+  ├─ Check configuration (tcl.languageServer.enable)
+  ├─ Check availability of tcl-language-server executable
+  │   ├─ Try: command --version
+  │   └─ Fallback: which command
+  │
+  ├─ If not available → Show user prompt
+  │   ├─ "Open GitHub" → Opens language server repository
+  │   ├─ "Configure Path" → Opens settings
+  │   └─ "Disable" → Disables language server
+  │
+  └─ If available → Start LSP client
+      ├─ Configure ServerOptions (executable path)
+      ├─ Configure ClientOptions
+      │   ├─ Document selector (tcl files)
+      │   ├─ File system watcher (*.tcl, *.tk, *.tm, *.test)
+      │   └─ Output channels (server output, trace)
+      │
+      └─ LanguageClient.start()
+          └─ Communicates via stdio with language server
+```
+
+**Integration Strategy:**
+- **Graceful Fallback**: Extension works with or without language server
+- **Built-in Providers**: Always registered as fallback when LSP is unavailable
+- **LSP Priority**: When language server is active, it takes priority over built-in providers
+- **User Control**: Can be disabled via `tcl.languageServer.enable` setting
+
+**Configuration Settings:**
+- `tcl.languageServer.enable` (boolean, default: true) - Enable/disable language server
+- `tcl.languageServer.path` (string, default: "tcl-language-server") - Executable path
+- `tcl.languageServer.trace.server` (string, default: "off") - Trace LSP communication
+
+**Management Commands:**
+- `tcl.restartLanguageServer` - Restart the language server
+- `tcl.showLanguageServerOutput` - Show language server output channel
+- `tcl.languageServerStatus` - Display current state (Stopped/Starting/Running)
+
+**Lifecycle:**
+- Activated during extension activation (async)
+- Deactivated during extension deactivation
+- Can be restarted without reloading extension
+
+**Language Server Repository:**
+- https://github.com/AmosAnderson/tcl_languageserver
+- Separate executable, installed independently
+- Provides enhanced semantic analysis beyond built-in providers
+
+### 2.3 IntelliSense Providers (Working Together)
 
 These providers share the common pattern of analyzing code to provide language intelligence:
 
@@ -168,7 +233,7 @@ These providers share the common pattern of analyzing code to provide language i
 4. Namespace references
    - Identifies namespace syntax
 
-### 2.3 Formatter Architecture
+### 2.4 Formatter Architecture
 
 **Files:** `src/formatter/tclFormatter.ts`, `src/formatter/formattingProvider.ts`
 
@@ -198,7 +263,7 @@ These providers share the common pattern of analyzing code to provide language i
 - Preserving TCL's flexible syntax while normalizing style
 - Handling both tabs and spaces based on configuration
 
-### 2.4 Debug Adapter Implementation
+### 2.5 Debug Adapter Implementation
 
 **Files:**
 - `src/debug/debugAdapterFactory.ts` - Factory and configuration
@@ -251,7 +316,7 @@ TclDebugSession (extends DebugSession)
 - User code execution through terminal's `sendText()`
 - No direct output parsing; REPL displays results directly
 
-### 2.5 Testing Framework Integration
+### 2.6 Testing Framework Integration
 
 **File:** `src/testing/testProvider.ts`
 
@@ -287,7 +352,7 @@ TestController (VS Code Testing API)
 - Captures error messages and stack traces
 - Supports both test output parsing and command-line assertions
 
-### 2.6 Coverage Analysis
+### 2.7 Coverage Analysis
 
 **File:** `src/testing/coverageProvider.ts`
 
@@ -306,7 +371,7 @@ TestController (VS Code Testing API)
 - Red decorations for uncovered lines
 - Percentage summary shown in status
 
-### 2.7 Refactoring Support
+### 2.8 Refactoring Support
 
 **Rename Provider** (`src/refactoring/renameProvider.ts`)
 - Implements `RenameProvider` interface
@@ -338,7 +403,7 @@ TestController (VS Code Testing API)
 - Generates procedure signature with detected arguments
 - Inserts at appropriate location (top of file or namespace)
 
-### 2.8 Tool Managers (Phase 6 - Lazy Loaded)
+### 2.9 Tool Managers (Phase 6 - Lazy Loaded)
 
 #### **Interpreter Manager** (`src/tools/interpreterManager.ts`)
 
@@ -963,6 +1028,7 @@ export class TclNewProvider implements vscode.SomeProvider {
 | File | Purpose |
 |------|---------|
 | `src/extension.ts` | Main entry point, orchestrates all providers |
+| `src/languageServer/client.ts` | Language Server Protocol client integration |
 | `src/data/tclCommands.ts` | Central TCL language knowledge base |
 | `src/providers/completionProvider.ts` | IntelliSense completions |
 | `src/providers/symbolProvider.ts` | Document outline and workspace symbols |
@@ -989,15 +1055,16 @@ export class TclNewProvider implements vscode.SomeProvider {
 
 ## 10. Summary: Key Architectural Principles
 
-1. **Separation of Concerns:** Each provider handles one language feature
-2. **Single Source of Truth:** TCL commands defined once, used by multiple providers
-3. **Performance through Caching:** Document content cached per provider, invalidated on change
-4. **Lazy Initialization:** Heavy features only initialized when first needed
-5. **Configuration-Driven:** User preferences configure formatting, paths, and feature flags
-6. **Terminal-Based Execution:** REPL, testing, and debugging use system processes
-7. **Workspace Awareness:** All analysis functions operate on entire workspace, not just current file
-8. **Error Handling:** Graceful degradation (e.g., if tclsh unavailable, still basic highlighting works)
-9. **Extensibility:** Clear patterns for adding providers, tools, and command handlers
-10. **Event-Driven:** Responds to document changes, user actions, configuration updates
+1. **LSP Integration with Fallback:** Language Server Protocol provides enhanced features when available, with graceful fallback to built-in providers
+2. **Separation of Concerns:** Each provider handles one language feature
+3. **Single Source of Truth:** TCL commands defined once, used by multiple providers
+4. **Performance through Caching:** Document content cached per provider, invalidated on change
+5. **Lazy Initialization:** Heavy features only initialized when first needed
+6. **Configuration-Driven:** User preferences configure formatting, paths, and feature flags
+7. **Terminal-Based Execution:** REPL, testing, and debugging use system processes
+8. **Workspace Awareness:** All analysis functions operate on entire workspace, not just current file
+9. **Error Handling:** Graceful degradation (e.g., if tclsh or language server unavailable, still basic functionality works)
+10. **Extensibility:** Clear patterns for adding providers, tools, and command handlers
+11. **Event-Driven:** Responds to document changes, user actions, configuration updates
 
 This architecture allows the extension to provide comprehensive TCL language support while remaining maintainable and performant.

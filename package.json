@@ -2,7 +2,7 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
     "vscode": "^1.105.0"
@@ -113,6 +113,22 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically discover TCL packages in workspace"
+        },
+        "tcl.languageServer.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable TCL Language Server for enhanced IntelliSense and features"
+        },
+        "tcl.languageServer.path": {
+          "type": "string",
+          "default": "tcl-language-server",
+          "description": "Path to the TCL language server executable"
+        },
+        "tcl.languageServer.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server"
         }
       }
     },
@@ -204,6 +220,18 @@
       {
         "command": "tcl.runBuild",
         "title": "TCL: Run Build Task"
+      },
+      {
+        "command": "tcl.restartLanguageServer",
+        "title": "TCL: Restart Language Server"
+      },
+      {
+        "command": "tcl.showLanguageServerOutput",
+        "title": "TCL: Show Language Server Output"
+      },
+      {
+        "command": "tcl.languageServerStatus",
+        "title": "TCL: Language Server Status"
       }
     ],
     "debuggers": [
@@ -285,7 +313,8 @@
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.68.0",
-    "@vscode/debugprotocol": "^1.68.0"
+    "@vscode/debugprotocol": "^1.68.0",
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

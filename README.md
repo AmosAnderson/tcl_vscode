@@ -1,6 +1,15 @@
 # TCL Language Support for VS Code
 
-This extension provides TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting and code formatting.
+This extension provides comprehensive TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting, code formatting, and integration with the TCL Language Server for enhanced IntelliSense.
+
+## Language Server Integration
+
+This extension integrates with the **TCL Language Server** for enhanced code intelligence:
+
+- Install the language server from: https://github.com/AmosAnderson/tcl_languageserver
+- The extension will automatically detect and use `tcl-language-server` if available
+- Fallback to built-in providers when the language server is not installed
+- Configure the language server path in settings: `tcl.languageServer.path`
 
 ## Features
 
@@ -83,7 +92,19 @@ Comprehensive syntax highlighting for TCL files including:
 
 ## Installation
 
-### Development
+### Installing the Language Server
+
+For the best experience, install the TCL Language Server:
+
+```bash
+# Clone and build the language server
+git clone https://github.com/AmosAnderson/tcl_languageserver
+cd tcl_languageserver
+# Follow build instructions in the repository
+# Ensure tcl-language-server is in your PATH
+```
+
+### Extension Development
 1. Clone this repository
 2. Run `npm install` to install dependencies
 3. Press `F5` to launch a new VS Code window with the extension loaded
@@ -92,6 +113,17 @@ Comprehensive syntax highlighting for TCL files including:
 ```bash
 npm run compile
 ```
+
+## Configuration
+
+### Language Server Settings
+
+- `tcl.languageServer.enable` (boolean, default: `true`) - Enable/disable the language server
+- `tcl.languageServer.path` (string, default: `"tcl-language-server"`) - Path to the language server executable
+- `tcl.languageServer.trace.server` (string, default: `"off"`) - Trace communication between VS Code and the language server
+
+### Formatting Settings
+
 The extension provides several configuration options under `tcl.format.*`:
 ## Features
 * Tcl interpreter discovery (system, ActiveTcl, TclKit) supporting versions 8.4 through 9.0

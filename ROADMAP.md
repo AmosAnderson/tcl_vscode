@@ -39,6 +39,15 @@ This document tracks the major milestones for the TCL language extension. It mir
 - Dependency manager, package tasks, and project templates
 - Task provider that surfaces common Tcl build scripts
 
+### Phase 7 – Language Server Protocol Integration
+- Full LSP client implementation for TCL Language Server
+- Automatic detection and activation when language server is available
+- Graceful fallback to built-in providers when not installed
+- Configuration settings for enabling/disabling and customizing server path
+- Commands for managing language server (restart, status, output logs)
+- Enhanced IntelliSense capabilities when language server is active
+- Language server available at: https://github.com/AmosAnderson/tcl_languageserver
+
 ## 🔜 Planned Enhancements
 
 ### High Priority

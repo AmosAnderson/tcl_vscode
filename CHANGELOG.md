@@ -2,6 +2,29 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
+## [0.3.6] - 2025-01-08
+
+### Added
+- **Language Server Integration**: Full support for TCL Language Server (tcl-language-server)
+  - Automatic detection and activation of language server when available
+  - Graceful fallback to built-in providers when language server is not installed
+  - New configuration settings:
+    - `tcl.languageServer.enable` - Enable/disable language server
+    - `tcl.languageServer.path` - Path to language server executable
+    - `tcl.languageServer.trace.server` - Trace LSP communication
+  - New commands:
+    - `tcl.restartLanguageServer` - Restart the language server
+    - `tcl.showLanguageServerOutput` - Show language server output channel
+    - `tcl.languageServerStatus` - Display current language server status
+  - Enhanced IntelliSense when language server is available
+  - Install from: https://github.com/AmosAnderson/tcl_languageserver
+
+### Internal
+- Added vscode-languageclient dependency (^9.0.1)
+- Added skipLibCheck to TypeScript configuration for better compatibility
+- Created src/languageServer/client.ts for LSP integration
+- Updated extension activation to initialize language server
+
 ## [0.3.5] - 2024-11-05
 
 ### Fixed

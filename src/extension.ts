@@ -17,9 +17,15 @@ import { TclPackageManager } from './tools/packageManager';
 import { TclProjectTemplates } from './tools/projectTemplates';
 import { TclTaskProviderManager } from './tools/taskProvider';
 import { TclDependencyManager } from './tools/dependencyManager';
+import { activateLanguageServer, deactivateLanguageServer } from './languageServer/client';
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('TCL Language Support is now active!');
+
+    // Initialize Language Server (if enabled)
+    // The language server provides enhanced IntelliSense, diagnostics, and more
+    // Built-in providers below serve as fallback when LSP is disabled or unavailable
+    await activateLanguageServer(context);
 
     // Register formatting providers
     const documentFormattingProvider = new TclDocumentFormattingEditProvider();
@@ -285,4 +291,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Phase 6 features are now initialized lazily when first used
 }
 
-export function deactivate() {}
+export async function deactivate() {
+    // Stop the language server
+    await deactivateLanguageServer();
+}
