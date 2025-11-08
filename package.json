@@ -17,6 +17,10 @@
     "expect"
   ],
   "publisher": "amos-anderson",
+  "author": {
+    "name": "Amos Anderson",
+    "email": "amosanderson@gmail.com"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/AmosAnderson/tcl_vscode"
