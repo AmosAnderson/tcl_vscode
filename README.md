@@ -30,7 +30,7 @@ Comprehensive syntax highlighting for TCL files including:
 
 ### IntelliSense and Navigation
 - **Code Completion**: Smart auto-completion for:
-  - 150+ TCL built-in commands with signatures
+  - 250+ TCL built-in commands with signatures (Tcl, Tk, Expect)
   - User-defined procedures from current file
   - Variables in scope (local, global, namespace)
   - Package and namespace names
@@ -46,6 +46,33 @@ Comprehensive syntax highlighting for TCL files including:
   - Variable type and value preview
   - Procedure argument information
   - Comment extraction for documentation
+
+### Debugging and Testing
+- **Debug Adapter**: Launch TCL scripts with output capture
+  - Basic script execution and error reporting
+  - Breakpoint placement (limited functionality)
+  - Note: Full stepping and variable inspection coming in future release
+- **REPL Integration**: Interactive TCL console
+  - Start REPL terminal
+  - Evaluate selected code
+  - Run current file
+- **Testing Support**:
+  - Test discovery for tcltest and custom test procedures
+  - Test execution and results
+  - Coverage analysis scaffolding
+
+### Refactoring
+- **Rename Symbol**: Rename procedures, variables, and namespaces across workspace
+- **Extract Procedure**: Extract selected code into a new procedure
+- **Extract Variable**: Extract expression into a variable
+- **Inline Variable**: Replace variable uses with its value
+
+### Advanced Features
+- **Interpreter Management**: Discover and manage TCL interpreters (system, ActiveTcl, TclKit)
+- **Package Management**: Discover and manage TCL packages in workspace
+- **Dependency Analysis**: Track and report project dependencies
+- **Project Templates**: Scaffold new TCL projects
+- **Task Integration**: VS Code tasks for common TCL operations
 
 ### Language Configuration
 - Auto-closing pairs for brackets, braces, and quotes

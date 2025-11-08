@@ -2,10 +2,38 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
-## [Unreleased]
+## [0.3.5] - 2024-11-05
+
+### Fixed
+- **Critical**: Fixed invalid tclsh validation flag (was using non-existent `-n` flag)
+- **Critical**: Fixed broken multi-line procedure parsing in completion provider
+- **Critical**: Fixed shell injection vulnerability in test execution
+- **Major**: Fixed memory leaks from missing disposal registration
+- **Major**: Fixed string literal corruption in formatter (now properly skips content inside quotes)
+- **Major**: Fixed duplicate edits in variable renaming
+- **Major**: Fixed regex issues in hover provider, symbol provider, and code action provider
+- **Minor**: Replaced deprecated `.substr()` with `.substring()`
+- **Minor**: Fixed test name regex to replace all special characters (added missing 'g' flag)
+- **Minor**: Fixed file watcher disposal in test provider
+- **Minor**: Improved Phase 6 initialization error handling and cleanup
+
+### Improved
+- Enhanced diagnostic provider with proper backslash escape handling
+- Improved debug adapter with better error reporting and stack traces
+- Added TCL string escaping helper for safe command execution
+- Better procedure argument parsing with brace matching
+- Updated all procedure/namespace detection patterns to handle multi-line definitions
 
 ### Internal
-- Bumped development toolchain dependencies (TypeScript, ESLint, Mocha, VSCE, and assorted type packages) to their latest versions.
+- Updated all development dependencies to latest versions:
+  - TypeScript 5.9.3
+  - ESLint 9.39.1
+  - @typescript-eslint packages 8.46.3
+  - @types/node 24.10.0
+  - Mocha 11.7.5
+- All code passes compilation and linting with zero errors
+- Zero security vulnerabilities
+- Updated VS Code engine requirement to ^1.105.0
 
 ## [0.3.0] - 2025-08-23
 
@@ -33,9 +61,9 @@ All notable changes to the "tcl-language-support" extension will be documented i
 
 ### Phase 2 Features (Completed)
 #### Enhanced Syntax Highlighting
-# Changelog (Simplified)
+# Changelog (Detailed)
 
-This project is still in internal pre-release. Versions listed below have not yet been published to the VS Code Marketplace. Historical phased development notes have been condensed for clarity.
+This project is in active development. Versions are for internal tracking and have not yet been published to the VS Code Marketplace.
 
 ## 0.2.1 (Unreleased)
 ### Fixes
@@ -48,22 +76,26 @@ This project is still in internal pre-release. Versions listed below have not ye
 ## 0.2.0 (Internal)
 Initial complete feature pass (aggregated from earlier phased milestones):
 - Syntax highlighting (core Tcl, Tk, Expect, namespaces, packages, numbers, command substitutions).
-- Basic formatter (indentation + spacing options; still experimental).
-- IntelliSense: completions, hovers, document/workspace symbols, go to definition, references.
+- Basic formatter (indentation + spacing options).
+- IntelliSense: 250+ command completions, hovers, document/workspace symbols, go to definition, references.
 - Diagnostics: Syntax validation (including optional tclsh integration) & basic quick fixes.
-- Debugging: Breakpoints, stepping, call stack, variables.
+- Debugging: Basic launch support with script execution and output capture (breakpoint support limited).
 - REPL integration (evaluate selection / run file).
 - Testing: Test discovery, execution, coverage scaffolding.
 - Refactoring: Rename (with built-in command protection), extract proc/variable, inline variable.
 - Interpreter & package management utilities; project templates & tasks.
-- Documentation: User guide, configuration reference, FAQ, contributing guide.
+- Documentation: Architecture guides, configuration reference.
 
 ## 0.0.x (Internal prototypes)
 Early incremental prototypes leading up to 0.2.0 (bootstrapping extension structure, initial highlighting, formatter stub, and incremental feature layering). Details omitted.
 
 ---
-Planned before first public release:
-- Improve formatter (spacing + block expansion accuracy).
+**Known Limitations:**
+- Debug adapter has basic launch/output support; full stepping/variables inspection not yet implemented.
+- Formatter handles most cases but may need refinement for complex nested structures.
+
+**Planned before first public release:**
+- Full debug adapter implementation with stepping and variable inspection.
+- Enhanced formatter accuracy for edge cases.
 - Broaden rename/refactor semantic analysis.
-- Harden diagnostics & add more quick fixes.
 - Expand automated test coverage.

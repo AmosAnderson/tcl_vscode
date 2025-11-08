@@ -28,10 +28,11 @@ This document tracks the major milestones for the TCL language extension. It mir
 - Quick fixes for common issues surfaced through the diagnostic provider
 
 ### Phase 5 – Testing & Debugging
-- Debug adapter with launch configurations for Tcl scripts
+- Debug adapter with launch configurations for Tcl scripts (basic execution and output capture)
 - REPL commands (`tcl.startREPL`, `tcl.evaluateSelection`, etc.)
 - Integrated test explorer wiring with coverage commands (`tcl.generateCoverage`, `tcl.clearCoverage`)
-- Refactoring helpers (rename, extract procedure/variable)
+- Refactoring helpers (rename, extract procedure/variable, inline variable)
+- Note: Full debugging with stepping and variable inspection is planned for a future release
 
 ### Phase 6 – Tooling Integration
 - Interpreter discovery (system, TclKit, ActiveTcl, custom)
@@ -40,6 +41,12 @@ This document tracks the major milestones for the TCL language extension. It mir
 
 ## 🔜 Planned Enhancements
 
+### High Priority
+- **Full debugging support** with breakpoint pausing, stepping (step in/out/over), call stack inspection, and live variable viewing
+- **Enhanced formatter** for better handling of complex nested structures and edge cases
+- **Improved semantic analysis** for rename and refactoring operations
+
+### Future Features
 - **Linting providers** that surface style issues beyond structural syntax checks
 - **Workspace-wide symbol indexing** optimization for very large codebases
 - **Additional refactorings**, including inline procedure and namespace extraction helpers
