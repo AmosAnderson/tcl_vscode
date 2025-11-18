@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { ServerCapabilities } from 'vscode-languageserver-protocol';
 import { TclFormattingProvider } from './formatter/formattingProvider';
 import { TclCompletionItemProvider } from './providers/completionProvider';
 import { TclDocumentSymbolProvider, TclWorkspaceSymbolProvider } from './providers/symbolProvider';
@@ -19,60 +20,173 @@ import { TclTaskProviderManager } from './tools/taskProvider';
 import { TclDependencyManager } from './tools/dependencyManager';
 import { activateLanguageServer, deactivateLanguageServer } from './languageServer/client';
 
+interface BuiltInFeatureFlags {
+    formatting: boolean;
+    diagnostics: boolean;
+    codeAction: boolean;
+    completion: boolean;
+    hover: boolean;
+    definition: boolean;
+    references: boolean;
+    documentSymbol: boolean;
+    workspaceSymbol: boolean;
+    rename: boolean;
+}
+
+function determineBuiltInFeatureFlags(capabilities?: ServerCapabilities): BuiltInFeatureFlags {
+    if (!capabilities) {
+        return {
+            formatting: true,
+            diagnostics: true,
+            codeAction: true,
+            completion: true,
+            hover: true,
+            definition: true,
+            references: true,
+            documentSymbol: true,
+            workspaceSymbol: true,
+            rename: true
+        };
+    }
+
+    const supportsFormatting = Boolean(capabilities.documentFormattingProvider ?? capabilities.documentRangeFormattingProvider);
+    const supportsDiagnostics = languageServerSupportsDiagnostics(capabilities);
+
+    return {
+        formatting: !supportsFormatting,
+        diagnostics: !supportsDiagnostics,
+        codeAction: !Boolean(capabilities.codeActionProvider),
+        completion: !Boolean(capabilities.completionProvider),
+        hover: !Boolean(capabilities.hoverProvider),
+        definition: !Boolean(capabilities.definitionProvider),
+        references: !Boolean(capabilities.referencesProvider),
+        documentSymbol: !Boolean(capabilities.documentSymbolProvider),
+        workspaceSymbol: !Boolean(capabilities.workspaceSymbolProvider),
+        rename: !Boolean(capabilities.renameProvider)
+    };
+}
+
+function languageServerSupportsDiagnostics(capabilities: ServerCapabilities): boolean {
+    if (capabilities.diagnosticProvider) {
+        return true;
+    }
+
+    return typeof capabilities.textDocumentSync !== 'undefined';
+}
+
 export async function activate(context: vscode.ExtensionContext) {
     console.log('TCL Language Support is now active!');
 
     // Initialize Language Server (if enabled)
     // The language server provides enhanced IntelliSense, diagnostics, and more
     // Built-in providers below serve as fallback when LSP is disabled or unavailable
-    await activateLanguageServer(context);
+    const languageServerResult = await activateLanguageServer(context);
+    const serverCapabilities = languageServerResult.status === 'started'
+        ? languageServerResult.capabilities
+        : undefined;
+    const featureFlags = determineBuiltInFeatureFlags(serverCapabilities);
 
-    // Register formatting providers
-    const formattingProvider = new TclFormattingProvider();
+    // Register formatting providers when language server does not provide formatting
+    const formattingProvider = featureFlags.formatting ? new TclFormattingProvider() : undefined;
 
-    context.subscriptions.push(
-        vscode.languages.registerDocumentRangeFormattingEditProvider('tcl', formattingProvider, {
-            displayName: 'TCL Formatter (Built-in)'
-        })
-    );
+    if (formattingProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerDocumentFormattingEditProvider('tcl', formattingProvider, {
+                displayName: 'TCL Formatter (Built-in)'
+            }),
+            vscode.languages.registerDocumentRangeFormattingEditProvider('tcl', formattingProvider, {
+                displayName: 'TCL Formatter (Built-in)'
+            })
+        );
+    } else {
+        console.log('Skipping built-in formatter registration because the language server provides formatting.');
+    }
 
-    // Register diagnostic and code action providers
-    const diagnosticProvider = new TclDiagnosticProvider();
-    const codeActionProvider = new TclCodeActionProvider();
+    // Register diagnostic and code action providers when needed
+    const diagnosticProvider = featureFlags.diagnostics ? new TclDiagnosticProvider() : undefined;
+    const codeActionProvider = featureFlags.codeAction ? new TclCodeActionProvider() : undefined;
 
-    // Set up diagnostic validation on document changes
-    const validateDocument = (document: vscode.TextDocument) => {
-        if (document.languageId === 'tcl') {
-            diagnosticProvider.provideDiagnostics(document);
-        }
-    };
+    if (diagnosticProvider) {
+        const validateDocument = (document: vscode.TextDocument) => {
+            if (document.languageId === 'tcl') {
+                diagnosticProvider.provideDiagnostics(document);
+            }
+        };
 
-    context.subscriptions.push(
-        vscode.languages.registerCodeActionsProvider('tcl', codeActionProvider),
-        vscode.workspace.onDidOpenTextDocument(validateDocument),
-        vscode.workspace.onDidChangeTextDocument(event => validateDocument(event.document)),
-        vscode.workspace.onDidSaveTextDocument(validateDocument)
-    );
+        context.subscriptions.push(
+            vscode.workspace.onDidOpenTextDocument(validateDocument),
+            vscode.workspace.onDidChangeTextDocument(event => validateDocument(event.document)),
+            vscode.workspace.onDidSaveTextDocument(validateDocument)
+        );
 
-    // Validate already open documents
-    vscode.workspace.textDocuments.forEach(validateDocument);
+        vscode.workspace.textDocuments.forEach(validateDocument);
+    } else {
+        console.log('Skipping built-in diagnostics because the language server provides diagnostics.');
+    }
+
+    if (codeActionProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerCodeActionsProvider('tcl', codeActionProvider)
+        );
+    } else {
+        console.log('Skipping built-in code actions because the language server provides code actions.');
+    }
 
     // Register IntelliSense providers
-    const completionProvider = new TclCompletionItemProvider();
-    const hoverProvider = new TclHoverProvider();
-    const definitionProvider = new TclDefinitionProvider();
-    const referenceProvider = new TclReferenceProvider();
-    const documentSymbolProvider = new TclDocumentSymbolProvider();
-    const workspaceSymbolProvider = new TclWorkspaceSymbolProvider();
+    const completionProvider = featureFlags.completion ? new TclCompletionItemProvider() : undefined;
+    const hoverProvider = featureFlags.hover ? new TclHoverProvider() : undefined;
+    const definitionProvider = featureFlags.definition ? new TclDefinitionProvider() : undefined;
+    const referenceProvider = featureFlags.references ? new TclReferenceProvider() : undefined;
+    const documentSymbolProvider = featureFlags.documentSymbol ? new TclDocumentSymbolProvider() : undefined;
+    const workspaceSymbolProvider = featureFlags.workspaceSymbol ? new TclWorkspaceSymbolProvider() : undefined;
 
-    context.subscriptions.push(
-        vscode.languages.registerCompletionItemProvider('tcl', completionProvider, '.', ':', '$'),
-        vscode.languages.registerHoverProvider('tcl', hoverProvider),
-        vscode.languages.registerDefinitionProvider('tcl', definitionProvider),
-        vscode.languages.registerReferenceProvider('tcl', referenceProvider),
-        vscode.languages.registerDocumentSymbolProvider('tcl', documentSymbolProvider),
-        vscode.languages.registerWorkspaceSymbolProvider(workspaceSymbolProvider)
-    );
+    if (completionProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerCompletionItemProvider('tcl', completionProvider, '.', ':', '$')
+        );
+    } else {
+        console.log('Skipping built-in completions because the language server provides completion items.');
+    }
+
+    if (hoverProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerHoverProvider('tcl', hoverProvider)
+        );
+    } else {
+        console.log('Skipping built-in hover provider because the language server provides hovers.');
+    }
+
+    if (definitionProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerDefinitionProvider('tcl', definitionProvider)
+        );
+    } else {
+        console.log('Skipping built-in definition provider because the language server provides definitions.');
+    }
+
+    if (referenceProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerReferenceProvider('tcl', referenceProvider)
+        );
+    } else {
+        console.log('Skipping built-in reference provider because the language server provides references.');
+    }
+
+    if (documentSymbolProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerDocumentSymbolProvider('tcl', documentSymbolProvider)
+        );
+    } else {
+        console.log('Skipping built-in document symbol provider because the language server provides document symbols.');
+    }
+
+    if (workspaceSymbolProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerWorkspaceSymbolProvider(workspaceSymbolProvider)
+        );
+    } else {
+        console.log('Skipping built-in workspace symbol provider because the language server provides workspace symbols.');
+    }
 
     // Register format document command
     context.subscriptions.push(
@@ -144,11 +258,18 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Register Phase 5 features: Refactoring
-    const renameProvider = new TclRenameProvider();
+    const renameProvider = featureFlags.rename ? new TclRenameProvider() : undefined;
     const extractProvider = new TclExtractProvider();
     
+    if (renameProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerRenameProvider('tcl', renameProvider)
+        );
+    } else {
+        console.log('Skipping built-in rename provider because the language server provides rename support.');
+    }
+
     context.subscriptions.push(
-        vscode.languages.registerRenameProvider('tcl', renameProvider),
         vscode.languages.registerCodeActionsProvider('tcl', extractProvider, {
             providedCodeActionKinds: [vscode.CodeActionKind.RefactorExtract]
         })
@@ -280,9 +401,13 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Register disposal for core providers
+    if (completionProvider) {
+        context.subscriptions.push(completionProvider);
+    }
+    if (diagnosticProvider) {
+        context.subscriptions.push(diagnosticProvider);
+    }
     context.subscriptions.push(
-        completionProvider,
-        diagnosticProvider,
         debugAdapterFactory,
         testProvider,
         coverageProvider

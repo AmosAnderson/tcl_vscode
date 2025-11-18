@@ -7,16 +7,23 @@ import {
     ExecutableOptions,
     Executable
 } from 'vscode-languageclient/node';
+import { ServerCapabilities } from 'vscode-languageserver-protocol';
 
 let client: LanguageClient | undefined;
 
-export async function activateLanguageServer(context: vscode.ExtensionContext): Promise<void> {
+export interface LanguageServerActivationResult {
+    status: 'disabled' | 'unavailable' | 'started' | 'failed';
+    client?: LanguageClient;
+    capabilities?: ServerCapabilities;
+}
+
+export async function activateLanguageServer(context: vscode.ExtensionContext): Promise<LanguageServerActivationResult> {
     const config = vscode.workspace.getConfiguration('tcl');
     const enabled = config.get<boolean>('languageServer.enable', true);
 
     if (!enabled) {
         vscode.window.showInformationMessage('TCL Language Server is disabled. Enable it in settings to use enhanced features.');
-        return;
+        return { status: 'disabled' };
     }
 
     const serverCommand = config.get<string>('languageServer.path', 'tcl-language-server');
@@ -38,7 +45,7 @@ export async function activateLanguageServer(context: vscode.ExtensionContext): 
         } else if (action === 'Disable') {
             await config.update('languageServer.enable', false, vscode.ConfigurationTarget.Global);
         }
-        return;
+        return { status: 'unavailable' };
     }
 
     try {
@@ -89,9 +96,15 @@ export async function activateLanguageServer(context: vscode.ExtensionContext): 
         // Register commands
         registerLanguageServerCommands(context);
 
+        return {
+            status: 'started',
+            client,
+            capabilities: client.initializeResult?.capabilities
+        };
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to start TCL Language Server: ${error}`);
         console.error('Language Server Error:', error);
+        return { status: 'failed' };
     }
 }
 
