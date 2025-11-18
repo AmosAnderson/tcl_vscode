@@ -5,11 +5,13 @@ import {
     ServerOptions,
     TransportKind,
     ExecutableOptions,
-    Executable
+    Executable,
+    State
 } from 'vscode-languageclient/node';
 import { ServerCapabilities } from 'vscode-languageserver-protocol';
 
 let client: LanguageClient | undefined;
+let statusBarItem: vscode.StatusBarItem | undefined;
 
 export interface LanguageServerActivationResult {
     status: 'disabled' | 'unavailable' | 'started' | 'failed';
@@ -88,8 +90,20 @@ export async function activateLanguageServer(context: vscode.ExtensionContext): 
             clientOptions
         );
 
+        // Create status bar item
+        statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 0);
+        context.subscriptions.push(statusBarItem);
+
+        // Update status bar on state change
+        client.onDidChangeState((event) => {
+            updateStatusBarItem(event.newState);
+        });
+
         // Start the client and server
         await client.start();
+
+        // Initial status update (in case state change didn't fire or we want to be sure)
+        updateStatusBarItem(State.Running);
 
         vscode.window.showInformationMessage('TCL Language Server started successfully');
 
@@ -109,6 +123,10 @@ export async function activateLanguageServer(context: vscode.ExtensionContext): 
 }
 
 export async function deactivateLanguageServer(): Promise<void> {
+    if (statusBarItem) {
+        statusBarItem.dispose();
+        statusBarItem = undefined;
+    }
     if (client) {
         await client.stop();
         client = undefined;
@@ -117,6 +135,31 @@ export async function deactivateLanguageServer(): Promise<void> {
 
 export function getLanguageClient(): LanguageClient | undefined {
     return client;
+}
+
+function updateStatusBarItem(state: State): void {
+    if (!statusBarItem) {
+        return;
+    }
+
+    switch (state) {
+        case State.Starting:
+            statusBarItem.text = '$(sync~spin) TCL Server';
+            statusBarItem.tooltip = 'TCL Language Server is starting...';
+            statusBarItem.show();
+            break;
+        case State.Running:
+            statusBarItem.text = '$(check) TCL Server';
+            statusBarItem.tooltip = 'TCL Language Server is running';
+            statusBarItem.command = 'tcl.languageServerStatus';
+            statusBarItem.show();
+            break;
+        case State.Stopped:
+            statusBarItem.text = '$(circle-slash) TCL Server';
+            statusBarItem.tooltip = 'TCL Language Server is stopped';
+            statusBarItem.show();
+            break;
+    }
 }
 
 async function checkLanguageServerAvailability(command: string): Promise<boolean> {
