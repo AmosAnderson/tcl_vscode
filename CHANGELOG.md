@@ -2,6 +2,13 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
+## [0.4.0] - 2025-11-18
+
+### Added
+- **Signature Help**: Added built-in signature help provider for TCL commands.
+  - Provides parameter hints and documentation for built-in commands as you type.
+  - Falls back to this built-in provider when the Language Server is not available or doesn't support signature help.
+
 ## [0.3.8] - 2025-01-10
 
 ### Added

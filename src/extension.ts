@@ -5,6 +5,7 @@ import { TclCompletionItemProvider } from './providers/completionProvider';
 import { TclDocumentSymbolProvider, TclWorkspaceSymbolProvider } from './providers/symbolProvider';
 import { TclDefinitionProvider, TclReferenceProvider } from './providers/definitionProvider';
 import { TclHoverProvider } from './providers/hoverProvider';
+import { TclSignatureHelpProvider } from './providers/signatureHelpProvider';
 import { TclDiagnosticProvider } from './providers/diagnosticProvider';
 import { TclCodeActionProvider } from './providers/codeActionProvider';
 import { TclDebugAdapterDescriptorFactory, TclConfigurationProvider } from './debug/debugAdapterFactory';
@@ -31,6 +32,7 @@ interface BuiltInFeatureFlags {
     documentSymbol: boolean;
     workspaceSymbol: boolean;
     rename: boolean;
+    signatureHelp: boolean;
 }
 
 function determineBuiltInFeatureFlags(capabilities?: ServerCapabilities): BuiltInFeatureFlags {
@@ -45,7 +47,8 @@ function determineBuiltInFeatureFlags(capabilities?: ServerCapabilities): BuiltI
             references: true,
             documentSymbol: true,
             workspaceSymbol: true,
-            rename: true
+            rename: true,
+            signatureHelp: true
         };
     }
 
@@ -62,7 +65,8 @@ function determineBuiltInFeatureFlags(capabilities?: ServerCapabilities): BuiltI
         references: !Boolean(capabilities.referencesProvider),
         documentSymbol: !Boolean(capabilities.documentSymbolProvider),
         workspaceSymbol: !Boolean(capabilities.workspaceSymbolProvider),
-        rename: !Boolean(capabilities.renameProvider)
+        rename: !Boolean(capabilities.renameProvider),
+        signatureHelp: !Boolean(capabilities.signatureHelpProvider)
     };
 }
 
@@ -139,6 +143,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const referenceProvider = featureFlags.references ? new TclReferenceProvider() : undefined;
     const documentSymbolProvider = featureFlags.documentSymbol ? new TclDocumentSymbolProvider() : undefined;
     const workspaceSymbolProvider = featureFlags.workspaceSymbol ? new TclWorkspaceSymbolProvider() : undefined;
+    const signatureHelpProvider = featureFlags.signatureHelp ? new TclSignatureHelpProvider() : undefined;
 
     if (completionProvider) {
         context.subscriptions.push(
@@ -154,6 +159,14 @@ export async function activate(context: vscode.ExtensionContext) {
         );
     } else {
         console.log('Skipping built-in hover provider because the language server provides hovers.');
+    }
+
+    if (signatureHelpProvider) {
+        context.subscriptions.push(
+            vscode.languages.registerSignatureHelpProvider('tcl', signatureHelpProvider, ' ', '[')
+        );
+    } else {
+        console.log('Skipping built-in signature help provider because the language server provides signature help.');
     }
 
     if (definitionProvider) {

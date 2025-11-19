@@ -31,9 +31,10 @@ A: Yes, if Tcllib is installed on your system, the extension will discover and p
 **Q: The extension doesn't activate. What should I check?**
 A: 
 1. Ensure your file has a supported extension (`.tcl`, `.tk`, `.tm`, `.test`)
-2. Check VS Code version (requires 1.74.0 or higher)
+2. Verify VS Code is **1.105.0 or newer** (Help → About)
 3. Look for errors in Output panel → "TCL Language Support"
 4. Try reloading VS Code window (Ctrl+Shift+P → "Developer: Reload Window")
+5. If you just cloned the repo for local development, run `npm install` once so the VS Code APIs resolve
 
 **Q: How do I configure the TCL interpreter path?**
 A: Set the path in settings:
@@ -77,6 +78,13 @@ A: The debugger requires:
 1. A `launch.json` configuration (see User Guide)
 2. TCL interpreter that supports debugging
 3. The file must be saved before debugging
+
+**Q: Signature Help / parameter hints are missing. How do I enable them?**
+A: Signature Help now ships with the extension. Make sure:
+1. `editor.parameterHints.enabled` is `true` (default)
+2. You trigger it manually with `Ctrl+Shift+Space` inside a command call to verify it loads
+3. The first token on the line is a TCL command recognized by the built-in data or the language server
+4. If you rely on the language server, confirm `tcl.languageServer.enable` remains `true`
 
 ### REPL Questions
 

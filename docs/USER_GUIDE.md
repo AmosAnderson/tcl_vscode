@@ -9,6 +9,11 @@
 
 ## Getting Started
 
+### Requirements
+- Visual Studio Code **1.105.0** or higher
+- Node.js **18 LTS** (only required for local development workflows such as cloning and running `npm install`)
+- A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing commands
+
 ### Installation
 1. Open VS Code
 2. Go to Extensions (Ctrl+Shift+X / Cmd+Shift+X)
@@ -34,9 +39,9 @@ After installation, the extension automatically activates when you open any TCL 
 - String interpolation and escape sequences
 
 ### ✨ IntelliSense
-- **Auto-completion**: 150+ built-in TCL commands with signatures
+- **Auto-completion**: 250+ built-in TCL commands with signatures
 - **Hover Information**: Command documentation and variable values
-- **Signature Help**: Parameter hints while typing
+- **Signature Help**: Parameter hints while typing, with active-argument highlighting
 - **Go to Definition**: Navigate to procedure definitions (F12)
 - **Find References**: Find all usages of procedures (Shift+F12)
 
@@ -114,6 +119,15 @@ Hover over any TCL command to see:
 - **Run Current File**: Run "TCL: Run Current File in REPL"
 
 ### Code Formatting
+### Signature Help (Parameter Hints)
+
+Signature Help appears automatically after you type a command name and the opening brace/space for its arguments. To use it effectively:
+
+1. Begin typing a TCL command such as `string` or `file` and insert a space.
+2. The parameter list pops up showing the active argument position. Use `Tab` or arrow keys to keep typing without dismissing the hint.
+3. Press `Ctrl+Shift+Space` to re-open Signature Help if it closes while you edit.
+4. The feature works with both built-in command data and the TCL Language Server; ensure `tcl.languageServer.enable` is `true` if you rely on server-provided signatures.
+
 
 #### Format Entire Document
 1. Open a TCL file

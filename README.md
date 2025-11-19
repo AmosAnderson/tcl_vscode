@@ -1,6 +1,13 @@
 # TCL Language Support for VS Code
 
-This extension provides comprehensive TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting, code formatting, and integration with the TCL Language Server for enhanced IntelliSense.
+This extension provides comprehensive TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting, code formatting, signature help, and integration with the TCL Language Server for enhanced IntelliSense.
+
+## Requirements
+
+- VS Code **1.105.0** or newer (matches the `engines.vscode` range in `package.json`)
+- Node.js **18 LTS** or newer for local development commands (`npm install`, `npm run compile`, etc.)
+- A TCL interpreter (`tclsh`) available on your PATH for diagnostics, the REPL, and testing workflows
+- Optional: `tcl-language-server` executable for richer IntelliSense (the extension falls back to built-in providers if it is absent)
 
 ## Language Server Integration
 
@@ -55,6 +62,7 @@ Comprehensive syntax highlighting for TCL files including:
   - Command documentation with signatures
   - Variable type and value preview
   - Procedure argument information
+  - **Signature Help overlays** that track the current argument while you type
   - Comment extraction for documentation
 
 ### Debugging and Testing
