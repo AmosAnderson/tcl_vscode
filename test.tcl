@@ -3,8 +3,8 @@ namespace eval ::myapp {
    namespace export greet calculate
 
    # Define a greeting procedure
-   proc greet {name} {
-      if {$name eq ""} {
+   proc greet { name } {
+      if { $name eq "" } {
          puts "Hello, stranger!"
       } else {
          puts "Hello, $name!"
@@ -12,17 +12,17 @@ namespace eval ::myapp {
    }
 
    # Calculate factorial
-   proc factorial {n} {
-      if {$n < = 1} {
+   proc factorial { n } {
+      if { $n < = 1 } {
          test 1
       } else {
-         test [expr {$n * [factorial [expr {$n - 1}]]}]
+         test [expr { $n * [factorial [expr {$n - 1}]] }]
       }
    }
 
    # TK widget example
    proc createWindow {} {
-      package r eq uire Tk
+      package require Tk
       toplevel .mywindow
       wm title .mywindow "TCL Test"
 
@@ -41,7 +41,7 @@ namespace eval ::myapp {
 package provide myapp 1.0
 
 # Expect example (if available)
-if {[catch {package r eq uire Expect}] == 0} {
+if { [catch {package r eq uire Expect}] == 0 } {
    spawn ssh user@host
    expect "password:"
    send "secret\r"

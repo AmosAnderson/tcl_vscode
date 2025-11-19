@@ -10,7 +10,7 @@
 ## Getting Started
 
 ### Requirements
-- Visual Studio Code **1.105.0** or higher
+- Visual Studio Code **1.106.1** or higher
 - Node.js **18 LTS** (only required for local development workflows such as cloning and running `npm install`)
 - A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing commands
 

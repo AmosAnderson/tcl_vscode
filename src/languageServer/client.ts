@@ -1,4 +1,9 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as os from 'os';
+import { promises as fsPromises, constants as fsConstants } from 'fs';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -12,6 +17,7 @@ import { ServerCapabilities } from 'vscode-languageserver-protocol';
 
 let client: LanguageClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
+const execFileAsync = promisify(execFile);
 
 export interface LanguageServerActivationResult {
     status: 'disabled' | 'unavailable' | 'started' | 'failed';
@@ -28,13 +34,12 @@ export async function activateLanguageServer(context: vscode.ExtensionContext): 
         return { status: 'disabled' };
     }
 
-    const serverCommand = config.get<string>('languageServer.path', 'tcl-language-server');
+    const configuredCommand = config.get<string>('languageServer.path', 'tcl-language-server');
+    const resolvedCommand = await resolveLanguageServerCommand(configuredCommand);
 
-    // Check if the language server is available
-    const isAvailable = await checkLanguageServerAvailability(serverCommand);
-    if (!isAvailable) {
+    if (!resolvedCommand) {
         const action = await vscode.window.showWarningMessage(
-            `TCL Language Server not found at "${serverCommand}". Install from https://github.com/AmosAnderson/tcl_languageserver`,
+            `TCL Language Server not found at "${configuredCommand}". Install from https://github.com/AmosAnderson/tcl_languageserver`,
             'Open GitHub',
             'Configure Path',
             'Disable'
@@ -53,12 +58,12 @@ export async function activateLanguageServer(context: vscode.ExtensionContext): 
     try {
         // Server executable options
         const run: Executable = {
-            command: serverCommand,
+            command: resolvedCommand,
             options: {}
         };
 
         const debug: Executable = {
-            command: serverCommand,
+            command: resolvedCommand,
             options: {}
         };
 
@@ -162,28 +167,81 @@ function updateStatusBarItem(state: State): void {
     }
 }
 
-async function checkLanguageServerAvailability(command: string): Promise<boolean> {
-    try {
-        const { exec } = require('child_process');
-        const { promisify } = require('util');
-        const execAsync = promisify(exec);
+async function resolveLanguageServerCommand(command: string): Promise<string | undefined> {
+    const sanitized = sanitizeCommand(command);
+    if (!sanitized) {
+        return undefined;
+    }
 
-        // Try to execute the command with --version or --help to check if it exists
-        await execAsync(`${command} --version`, { timeout: 5000 });
+    if (looksLikePath(sanitized)) {
+        const candidates = resolveCandidatePaths(sanitized);
+        for (const candidate of candidates) {
+            if (await pathExists(candidate)) {
+                return candidate;
+            }
+        }
+        return undefined;
+    }
+
+    const locator = process.platform === 'win32' ? 'where' : 'which';
+    try {
+        const { stdout } = await execFileAsync(locator, [sanitized], { timeout: 5000 });
+        const firstMatch = stdout
+            ?.split(/\r?\n/)
+            .map((line: string) => line.trim())
+            .find((line: string) => line.length > 0);
+        return firstMatch ?? sanitized;
+    } catch {
+        return undefined;
+    }
+}
+
+function sanitizeCommand(command: string | undefined): string {
+    if (!command) {
+        return '';
+    }
+    return command.trim().replace(/^"(.+)"$/, '$1');
+}
+
+function looksLikePath(command: string): boolean {
+    return path.isAbsolute(command) || command.includes('/') || command.includes('\\');
+}
+
+function resolveCandidatePaths(input: string): string[] {
+    const expanded = expandHomeDirectory(input);
+    const normalized = path.normalize(expanded);
+    if (path.isAbsolute(normalized)) {
+        return [normalized];
+    }
+
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    const workspaceCandidates = workspaceFolders.map((folder) => path.join(folder.uri.fsPath, normalized));
+    return [path.resolve(process.cwd(), normalized), ...workspaceCandidates];
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await fsPromises.access(filePath, fsConstants.X_OK);
         return true;
     } catch (error) {
-        // If command fails, try without arguments
+        if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+            return false;
+        }
         try {
-            const { exec } = require('child_process');
-            const { promisify } = require('util');
-            const execAsync = promisify(exec);
-
-            await execAsync(`which ${command}`, { timeout: 5000 });
+            await fsPromises.access(filePath, fsConstants.F_OK);
             return true;
         } catch {
             return false;
         }
     }
+}
+
+function expandHomeDirectory(potentialPath: string): string {
+    if (!potentialPath.startsWith('~')) {
+        return potentialPath;
+    }
+    const home = os.homedir();
+    return path.join(home, potentialPath.slice(1));
 }
 
 function registerLanguageServerCommands(context: vscode.ExtensionContext): void {

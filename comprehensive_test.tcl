@@ -115,7 +115,7 @@ proc test_control_structures {} {
 # ========================================
 
 # Test Tk widget creation
-proc createWindow {} {
+proc createWindow1 {} {
     package require Tk
     
     # Create main window

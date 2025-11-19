@@ -79,12 +79,14 @@ All notable changes to the "tcl-language-support" extension will be documented i
 - Updated all development dependencies to latest versions:
   - TypeScript 5.9.3
   - ESLint 9.39.1
-  - @typescript-eslint packages 8.46.3
-  - @types/node 24.10.0
+  - @typescript-eslint packages 8.47.0
+  - @types/node 24.10.1
+  - @types/vscode 1.106.1
+  - glob 12.0.0
   - Mocha 11.7.5
 - All code passes compilation and linting with zero errors
 - Zero security vulnerabilities
-- Updated VS Code engine requirement to ^1.105.0
+- Updated VS Code engine requirement to ^1.106.1
 
 ## [0.3.0] - 2025-08-23
 

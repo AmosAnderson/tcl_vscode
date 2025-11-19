@@ -31,7 +31,7 @@ A: Yes, if Tcllib is installed on your system, the extension will discover and p
 **Q: The extension doesn't activate. What should I check?**
 A: 
 1. Ensure your file has a supported extension (`.tcl`, `.tk`, `.tm`, `.test`)
-2. Verify VS Code is **1.105.0 or newer** (Help → About)
+2. Verify VS Code is **1.106.1 or newer** (Help → About)
 3. Look for errors in Output panel → "TCL Language Support"
 4. Try reloading VS Code window (Ctrl+Shift+P → "Developer: Reload Window")
 5. If you just cloned the repo for local development, run `npm install` once so the VS Code APIs resolve

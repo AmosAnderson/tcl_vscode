@@ -26,7 +26,6 @@ interface BuiltInFeatureFlags {
     diagnostics: boolean;
     codeAction: boolean;
     completion: boolean;
-    hover: boolean;
     definition: boolean;
     references: boolean;
     documentSymbol: boolean;
@@ -42,7 +41,6 @@ function determineBuiltInFeatureFlags(capabilities?: ServerCapabilities): BuiltI
             diagnostics: true,
             codeAction: true,
             completion: true,
-            hover: true,
             definition: true,
             references: true,
             documentSymbol: true,
@@ -60,7 +58,6 @@ function determineBuiltInFeatureFlags(capabilities?: ServerCapabilities): BuiltI
         diagnostics: !supportsDiagnostics,
         codeAction: !Boolean(capabilities.codeActionProvider),
         completion: !Boolean(capabilities.completionProvider),
-        hover: !Boolean(capabilities.hoverProvider),
         definition: !Boolean(capabilities.definitionProvider),
         references: !Boolean(capabilities.referencesProvider),
         documentSymbol: !Boolean(capabilities.documentSymbolProvider),
@@ -138,7 +135,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register IntelliSense providers
     const completionProvider = featureFlags.completion ? new TclCompletionItemProvider() : undefined;
-    const hoverProvider = featureFlags.hover ? new TclHoverProvider() : undefined;
+    const hoverProvider = new TclHoverProvider();
     const definitionProvider = featureFlags.definition ? new TclDefinitionProvider() : undefined;
     const referenceProvider = featureFlags.references ? new TclReferenceProvider() : undefined;
     const documentSymbolProvider = featureFlags.documentSymbol ? new TclDocumentSymbolProvider() : undefined;
@@ -153,12 +150,12 @@ export async function activate(context: vscode.ExtensionContext) {
         console.log('Skipping built-in completions because the language server provides completion items.');
     }
 
-    if (hoverProvider) {
-        context.subscriptions.push(
-            vscode.languages.registerHoverProvider('tcl', hoverProvider)
-        );
-    } else {
-        console.log('Skipping built-in hover provider because the language server provides hovers.');
+    context.subscriptions.push(
+        vscode.languages.registerHoverProvider('tcl', hoverProvider)
+    );
+
+    if (serverCapabilities?.hoverProvider) {
+        console.log('Registered built-in hover provider alongside the language server for extended coverage.');
     }
 
     if (signatureHelpProvider) {

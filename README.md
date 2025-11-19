@@ -4,7 +4,7 @@ This extension provides comprehensive TCL (Tool Command Language) support for Vi
 
 ## Requirements
 
-- VS Code **1.105.0** or newer (matches the `engines.vscode` range in `package.json`)
+- VS Code **1.106.1** or newer (matches the `engines.vscode` range in `package.json`)
 - Node.js **18 LTS** or newer for local development commands (`npm install`, `npm run compile`, etc.)
 - A TCL interpreter (`tclsh`) available on your PATH for diagnostics, the REPL, and testing workflows
 - Optional: `tcl-language-server` executable for richer IntelliSense (the extension falls back to built-in providers if it is absent)

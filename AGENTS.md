@@ -12,7 +12,7 @@ Core TypeScript lives in `src/`, where `extension.ts` wires formatter, provider,
 - `npm run package`: Wraps `vsce package` to emit a `.vsix`; bump versions first.
 
 ## Architecture & Activation Flow
-Version 0.4.0 targets VS Code 1.105+ and follows the layered plan in `CLAUDE.md`: data → providers → feature modules → entry point. Activation prefers `tcl-language-server` yet still registers built-in providers, so new language features must work in both LSP and fallback modes. Interpreter, package, dependency, template, and task managers boot lazily via `ensurePhase6Initialized()`; reuse that helper when adding commands to keep startup lean.
+Version 0.4.0 targets VS Code 1.106+ and follows the layered plan in `CLAUDE.md`: data → providers → feature modules → entry point. Activation prefers `tcl-language-server` yet still registers built-in providers, so new language features must work in both LSP and fallback modes. Interpreter, package, dependency, template, and task managers boot lazily via `ensurePhase6Initialized()`; reuse that helper when adding commands to keep startup lean.
 
 ## Coding Style & Naming Conventions
 Use 4-space indentation, `camelCase` for functions/variables, `PascalCase` for classes/providers, and kebab-case branches (`feat/language-server`). Keep provider registration centralized in `extension.ts`, prefer early returns, and rely on `eslint.config.cjs` + TypeScript ESLint rules for formatting, imports, and VS Code API usage.
