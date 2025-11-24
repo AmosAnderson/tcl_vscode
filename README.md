@@ -1,22 +1,13 @@
 # TCL Language Support for VS Code
 
-This extension provides comprehensive TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting, code formatting, signature help, and integration with the TCL Language Server for enhanced IntelliSense.
+This extension provides comprehensive TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting, code formatting, signature help, IntelliSense, debugging, refactoring, and tooling without relying on any external language server.
 
 ## Requirements
 
 - VS Code **1.106.1** or newer (matches the `engines.vscode` range in `package.json`)
 - Node.js **18 LTS** or newer for local development commands (`npm install`, `npm run compile`, etc.)
 - A TCL interpreter (`tclsh`) available on your PATH for diagnostics, the REPL, and testing workflows
-- Optional: `tcl-language-server` executable for richer IntelliSense (the extension falls back to built-in providers if it is absent)
-
-## Language Server Integration
-
-This extension integrates with the **TCL Language Server** for enhanced code intelligence:
-
-- Install the language server from: https://github.com/AmosAnderson/tcl_languageserver
-- The extension will automatically detect and use `tcl-language-server` if available
-- Fallback to built-in providers when the language server is not installed
-- Configure the language server path in settings: `tcl.languageServer.path`
+ 
 
 ## Features
 
@@ -38,7 +29,6 @@ Comprehensive syntax highlighting for TCL files including:
 - Automatic code formatting with configurable options
 - Format entire document or selected text
 - Format on save (configurable)
-- Choose between the built-in formatter (`TCL Formatter (Built-in)`) and the language-server formatter via **Format Document With…**
 - Customizable formatting rules:
   - Indentation (spaces/tabs)
   - Brace alignment
@@ -101,18 +91,6 @@ Comprehensive syntax highlighting for TCL files including:
 
 ## Installation
 
-### Installing the Language Server
-
-For the best experience, install the TCL Language Server:
-
-```bash
-# Clone and build the language server
-git clone https://github.com/AmosAnderson/tcl_languageserver
-cd tcl_languageserver
-# Follow build instructions in the repository
-# Ensure tcl-language-server is in your PATH
-```
-
 ### Extension Development
 1. Clone this repository
 2. Run `npm install` to install dependencies
@@ -124,12 +102,6 @@ npm run compile
 ```
 
 ## Configuration
-
-### Language Server Settings
-
-- `tcl.languageServer.enable` (boolean, default: `true`) - Enable/disable the language server
-- `tcl.languageServer.path` (string, default: `"tcl-language-server"`) - Path to the language server executable
-- `tcl.languageServer.trace.server` (string, default: `"off"`) - Trace communication between VS Code and the language server
 
 ### Formatting Settings
 

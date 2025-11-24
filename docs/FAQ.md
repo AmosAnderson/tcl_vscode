@@ -83,8 +83,7 @@ A: The debugger requires:
 A: Signature Help now ships with the extension. Make sure:
 1. `editor.parameterHints.enabled` is `true` (default)
 2. You trigger it manually with `Ctrl+Shift+Space` inside a command call to verify it loads
-3. The first token on the line is a TCL command recognized by the built-in data or the language server
-4. If you rely on the language server, confirm `tcl.languageServer.enable` remains `true`
+3. The first token on the line is a TCL command recognized by the built-in data
 
 ### REPL Questions
 

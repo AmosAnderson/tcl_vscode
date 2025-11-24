@@ -126,7 +126,7 @@ Signature Help appears automatically after you type a command name and the openi
 1. Begin typing a TCL command such as `string` or `file` and insert a space.
 2. The parameter list pops up showing the active argument position. Use `Tab` or arrow keys to keep typing without dismissing the hint.
 3. Press `Ctrl+Shift+Space` to re-open Signature Help if it closes while you edit.
-4. The feature works with both built-in command data and the TCL Language Server; ensure `tcl.languageServer.enable` is `true` if you rely on server-provided signatures.
+4. The feature relies on the built-in command database that ships with the extension, so no external language server is required.
 
 
 #### Format Entire Document

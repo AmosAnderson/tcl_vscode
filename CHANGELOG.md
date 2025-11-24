@@ -2,12 +2,17 @@
 
 All notable changes to the "tcl-language-support" extension will be documented in this file.
 
+## [Unreleased]
+
+### Removed
+- External TCL Language Server integration, including settings, commands, and the `vscode-languageclient` dependency. The extension now always uses its built-in providers for IntelliSense, diagnostics, and refactoring features.
+
 ## [0.4.0] - 2025-11-18
 
 ### Added
 - **Signature Help**: Added built-in signature help provider for TCL commands.
   - Provides parameter hints and documentation for built-in commands as you type.
-  - Falls back to this built-in provider when the Language Server is not available or doesn't support signature help.
+  - Ships entirely within the extension for consistent behavior across all environments.
 
 ## [0.3.8] - 2025-01-10
 

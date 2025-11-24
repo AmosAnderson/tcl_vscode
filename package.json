@@ -117,22 +117,6 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically discover TCL packages in workspace"
-        },
-        "tcl.languageServer.enable": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable TCL Language Server for enhanced IntelliSense and features"
-        },
-        "tcl.languageServer.path": {
-          "type": "string",
-          "default": "tcl-language-server",
-          "description": "Path to the TCL language server executable"
-        },
-        "tcl.languageServer.trace.server": {
-          "type": "string",
-          "enum": ["off", "messages", "verbose"],
-          "default": "off",
-          "description": "Traces the communication between VS Code and the language server"
         }
       }
     },
@@ -224,18 +208,6 @@
       {
         "command": "tcl.runBuild",
         "title": "TCL: Run Build Task"
-      },
-      {
-        "command": "tcl.restartLanguageServer",
-        "title": "TCL: Restart Language Server"
-      },
-      {
-        "command": "tcl.showLanguageServerOutput",
-        "title": "TCL: Show Language Server Output"
-      },
-      {
-        "command": "tcl.languageServerStatus",
-        "title": "TCL: Language Server Status"
       }
     ],
     "debuggers": [
@@ -317,22 +289,20 @@
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.68.0",
-    "@vscode/debugprotocol": "^1.68.0",
-    "vscode-languageclient": "^9.0.1"
+    "@vscode/debugprotocol": "^1.68.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.39.1",
-    "@types/glob": "^8.1.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^24.10.1",
     "@types/vscode": "^1.106.1",
     "@typescript-eslint/eslint-plugin": "^8.47.0",
     "@typescript-eslint/parser": "^8.47.0",
-    "@vscode/test-electron": "^2.2.0",
-    "@vscode/vsce": "^3.7.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
     "eslint": "^9.39.1",
-    "glob": "^12.0.0",
+    "glob": "^13.0.0",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3"
   }

@@ -4,18 +4,17 @@ This document provides a comprehensive reference for all configuration options a
 
 ## Table of Contents
 1. [General Settings](#general-settings)
-2. [Language Server Settings](#language-server-settings)
-3. [Formatting Settings](#formatting-settings)
-4. [Diagnostics Settings](#diagnostics-settings)
-5. [REPL Settings](#repl-settings)
-6. [Interpreter Settings](#interpreter-settings)
-7. [Package Settings](#package-settings)
-8. [Test Settings](#test-settings)
-9. [Editor Integration](#editor-integration)
-10. [Per-Project Configuration](#per-project-configuration)
-11. [Environment Variables](#environment-variables)
-12. [Configuration Precedence](#configuration-precedence)
-13. [Performance Optimization](#performance-optimization)
+2. [Formatting Settings](#formatting-settings)
+3. [Diagnostics Settings](#diagnostics-settings)
+4. [REPL Settings](#repl-settings)
+5. [Interpreter Settings](#interpreter-settings)
+6. [Package Settings](#package-settings)
+7. [Test Settings](#test-settings)
+8. [Editor Integration](#editor-integration)
+9. [Per-Project Configuration](#per-project-configuration)
+10. [Environment Variables](#environment-variables)
+11. [Configuration Precedence](#configuration-precedence)
+12. [Performance Optimization](#performance-optimization)
 
 ## General Settings
 
@@ -29,37 +28,6 @@ Supported file extensions:
 - `.tk` - Tk GUI files  
 - `.tm` - TCL modules
 - `.test` - Test files
-
-## Language Server Settings
-
-Control how the extension connects to the optional TCL Language Server. When the server is unavailable, the extension automatically falls back to the built-in providers.
-
-### `tcl.languageServer.enable`
-- **Type**: `boolean`
-- **Default**: `true`
-- **Description**: Enable or disable the TCL Language Server integration globally.
-
-```json
-"tcl.languageServer.enable": true
-```
-
-### `tcl.languageServer.path`
-- **Type**: `string`
-- **Default**: `"tcl-language-server"`
-- **Description**: Path to the language server executable. Set an absolute path if the binary is not on your PATH.
-
-```json
-"tcl.languageServer.path": "/usr/local/bin/tcl-language-server"
-```
-
-### `tcl.languageServer.trace.server`
-- **Type**: `string` (`"off" | "messages" | "verbose"`)
-- **Default**: `"off"`
-- **Description**: Controls protocol logging between VS Code and the language server, useful when diagnosing IntelliSense issues.
-
-```json
-"tcl.languageServer.trace.server": "messages"
-```
 
 ## Formatting Settings
 
