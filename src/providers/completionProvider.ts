@@ -254,7 +254,6 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
 
         for (let i = openBraceIndex; i < text.length; i++) {
             const char = text[i];
-            const prev = i > 0 ? text[i - 1] : '';
 
             if (!inString && char === '{') {
                 depth++;
@@ -265,13 +264,25 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
                 }
             }
 
-            if (prev !== '\\' && (char === '"' || char === '\'')) {
-                if (inString && char === stringChar) {
-                    inString = false;
-                    stringChar = '';
-                } else if (!inString) {
-                    inString = true;
-                    stringChar = char;
+            if (char === '"' || char === '\'') {
+                // Count consecutive backslashes before this character
+                let backslashCount = 0;
+                let checkPos = i - 1;
+                while (checkPos >= 0 && text[checkPos] === '\\') {
+                    backslashCount++;
+                    checkPos--;
+                }
+                // Quote is escaped only if odd number of backslashes before it
+                const isEscaped = backslashCount % 2 === 1;
+
+                if (!isEscaped) {
+                    if (inString && char === stringChar) {
+                        inString = false;
+                        stringChar = '';
+                    } else if (!inString) {
+                        inString = true;
+                        stringChar = char;
+                    }
                 }
             }
         }

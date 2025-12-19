@@ -1,73 +1,43 @@
 # TCL Language Support for VS Code
 
-This extension provides comprehensive TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting, code formatting, signature help, IntelliSense, debugging, refactoring, and tooling without relying on any external language server.
+Comprehensive TCL (Tool Command Language) support for Visual Studio Code, including syntax highlighting, code formatting, signature help, IntelliSense, debugging, refactoring, and tooling—all without requiring an external language server.
 
 ## Requirements
 
-- VS Code **1.106.1** or newer (matches the `engines.vscode` range in `package.json`)
-- Node.js **18 LTS** or newer for local development commands (`npm install`, `npm run compile`, etc.)
-- A TCL interpreter (`tclsh`) available on your PATH for diagnostics, the REPL, and testing workflows
- 
+- VS Code **1.106.1** or newer
+- Node.js **18 LTS** or newer (for local development only)
+- A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing
 
 ## Features
 
 ### Syntax Highlighting
-Comprehensive syntax highlighting for TCL files including:
-- Keywords and control structures
-- Built-in commands and functions
+- Keywords, control structures, and built-in commands
 - Variables and string interpolation
-- Comments and numbers
-- Operators and expressions
-- **Namespace support** with highlighting for namespace commands
-- **Package commands** (provide, require, etc.)
-- **Tk widget commands** and functions
-- **Expect commands** for automation scripts
-- **Custom procedure highlighting**
+- Comments, numbers, operators
+- Namespace and package commands
+- Tk widget commands
+- Expect commands for automation scripts
 - Improved escape sequences and embedded commands
 
 ### Code Formatting
-- Automatic code formatting with configurable options
 - Format entire document or selected text
 - Format on save (configurable)
-- Customizable formatting rules:
+- Customizable options:
   - Indentation (spaces/tabs)
   - Brace alignment
   - Operator spacing
   - Spaces inside braces and brackets
 
 ### IntelliSense and Navigation
-- **Code Completion**: Smart auto-completion for:
-  - 250+ TCL built-in commands with signatures (Tcl, Tk, Expect)
-  - User-defined procedures from current file
-  - Variables in scope (local, global, namespace)
-  - Package and namespace names
-  - Code snippets for common patterns
-  - String subcommands
-- **Symbol Navigation**:
-  - Document outline with procedures, namespaces, variables
-  - Go to definition for procedures and namespaces
-  - Find all references for procedure calls
-  - Workspace-wide symbol search
-- **Hover Information**:
-  - Command documentation with signatures
-  - Variable type and value preview
-  - Procedure argument information
-  - **Signature Help overlays** that track the current argument while you type
-  - Comment extraction for documentation
+- **Code Completion**: 250+ TCL built-in commands with signatures, user-defined procedures, variables, packages, namespaces, and snippets
+- **Symbol Navigation**: Document outline, go to definition, find references, workspace symbol search
+- **Hover Information**: Command documentation, variable preview, procedure arguments
+- **Signature Help**: Parameter hints while typing with active-argument highlighting
 
 ### Debugging and Testing
-- **Debug Adapter**: Launch TCL scripts with output capture
-  - Basic script execution and error reporting
-  - Breakpoint placement (limited functionality)
-  - Note: Full stepping and variable inspection coming in future release
-- **REPL Integration**: Interactive TCL console
-  - Start REPL terminal
-  - Evaluate selected code
-  - Run current file
-- **Testing Support**:
-  - Test discovery for tcltest and custom test procedures
-  - Test execution and results
-  - Coverage analysis scaffolding
+- **Debug Adapter**: Launch TCL scripts with output capture and basic error reporting
+- **REPL Integration**: Interactive TCL console, evaluate selection, run current file
+- **Testing Support**: Test discovery, execution, and coverage analysis scaffolding
 
 ### Refactoring
 - **Rename Symbol**: Rename procedures, variables, and namespaces across workspace
@@ -76,78 +46,86 @@ Comprehensive syntax highlighting for TCL files including:
 - **Inline Variable**: Replace variable uses with its value
 
 ### Advanced Features
-- **Interpreter Management**: Discover and manage TCL interpreters (system, ActiveTcl, TclKit)
-- **Package Management**: Discover and manage TCL packages in workspace
-- **Dependency Analysis**: Track and report project dependencies
-- **Project Templates**: Scaffold new TCL projects
-- **Task Integration**: VS Code tasks for common TCL operations
+- Interpreter management (system, ActiveTcl, TclKit, versions 8.4–9.0)
+- Package discovery and management
+- Dependency analysis and reporting
+- Project templates for scaffolding new TCL projects
+- VS Code task integration
 
-### Language Configuration
-- Auto-closing pairs for brackets, braces, and quotes
-- Comment toggling with `#`
-- Bracket matching
-- Code folding regions
-- Smart indentation rules
+## Supported Tcl Versions
+
+The extension supports Tcl versions **8.4 through 9.0**. Interpreters outside this range can be added as custom paths, but some features may not function correctly.
 
 ## Installation
 
-### Extension Development
-1. Clone this repository
-2. Run `npm install` to install dependencies
-3. Press `F5` to launch a new VS Code window with the extension loaded
+Search for "TCL Syntax" in the VS Code Extensions marketplace and click Install.
 
-### Building
+### Development Setup
+
 ```bash
+git clone https://github.com/AmosAnderson/tcl_vscode
+cd tcl_vscode
+npm install
 npm run compile
 ```
+
+Press `F5` to launch a new VS Code window with the extension loaded.
 
 ## Configuration
 
 ### Formatting Settings
 
-The extension provides several configuration options under `tcl.format.*`:
-## Features
-* Tcl interpreter discovery (system, ActiveTcl, TclKit) supporting versions 8.4 through 9.0
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `tcl.format.enable` | `false` | Enable automatic formatting on save |
+| `tcl.format.alignBraces` | `true` | Align opening and closing braces |
+| `tcl.format.spacesAroundOperators` | `true` | Add spaces around operators |
+| `tcl.format.spacesInsideBraces` | `true` | Add spaces inside braces |
+| `tcl.format.spacesInsideBrackets` | `false` | Add spaces inside brackets |
 
-## Supported Tcl Versions
+### Diagnostics Settings
 
-The extension actively supports Tcl versions 8.4 through 9.0. Interpreters outside this range can still be added as custom paths, but a warning will be shown and some language features may not function correctly. Version detection prefers the newest supported interpreter discovered on your system.
-- `tcl.format.alignBraces`: Align opening and closing braces (default: `true`)
-## Development
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `tcl.diagnostics.enable` | `true` | Enable syntax diagnostics |
+| `tcl.diagnostics.useTclsh` | `true` | Use tclsh for advanced validation |
 
-### Project Structure
+### REPL Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `tcl.repl.tclPath` | `"tclsh"` | Path to TCL interpreter for REPL |
+
+## Project Structure
+
 ```
 tcl_vscode/
 ├── src/
 │   ├── extension.ts          # Extension entry point
-│   ├── data/
-│   │   └── tclCommands.ts    # TCL command definitions and snippets
-│   ├── formatter/            # Formatting implementation
-│   │   ├── tclFormatter.ts   # Core formatter logic
-│   │   └── formattingProvider.ts # VS Code formatting providers
-│   └── providers/            # IntelliSense providers
-│       ├── completionProvider.ts # Code completion
-│       ├── symbolProvider.ts # Document/workspace symbols
-│       ├── definitionProvider.ts # Go to definition/references
-│       └── hoverProvider.ts  # Hover information
+│   ├── data/                  # TCL command definitions
+│   ├── formatter/             # Code formatting
+│   ├── providers/             # IntelliSense providers
+│   ├── debug/                 # Debug adapter
+│   ├── refactoring/           # Rename/extract providers
+│   ├── testing/               # Test discovery/coverage
+│   └── tools/                 # Interpreter/package management
 ├── syntaxes/
-│   └── tcl.tmLanguage.json   # Syntax highlighting rules
-├── language-configuration.json # Language configuration
-├── package.json              # Extension manifest
-├── tsconfig.json            # TypeScript configuration
-└── ROADMAP.md               # Development roadmap
+│   └── tcl.tmLanguage.json    # Syntax highlighting
+├── language-configuration.json
+└── package.json
 ```
 
-### Scripts
-- `npm run compile` - Compile TypeScript to JavaScript
-- `npm run watch` - Watch for changes and recompile
+## Scripts
+
+- `npm run compile` - Compile TypeScript
+- `npm run watch` - Watch and recompile
 - `npm run lint` - Run ESLint
 - `npm test` - Run tests
 
 ## Contributing
 
-See ROADMAP.md for planned features and development phases.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines and [ROADMAP.md](ROADMAP.md) for planned features.
 
 ## License
 
-MIT License. See LICENSE for details.
+MIT License. See [LICENSE](LICENSE) for details.

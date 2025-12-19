@@ -2,7 +2,7 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
     "vscode": "^1.106.1"
@@ -26,7 +26,6 @@
     "url": "https://github.com/AmosAnderson/tcl_vscode"
   },
   "activationEvents": [
-    "onLanguage:tcl",
     "onDebugResolve:tcl",
     "onDebugInitialConfigurations"
   ],
@@ -295,7 +294,7 @@
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.39.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.3",
     "@types/vscode": "^1.106.1",
     "@typescript-eslint/eslint-plugin": "^8.47.0",
     "@typescript-eslint/parser": "^8.47.0",

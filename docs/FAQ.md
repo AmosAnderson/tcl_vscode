@@ -12,7 +12,7 @@
 ### General Questions
 
 **Q: What versions of TCL are supported?**
-A: The extension supports TCL 8.0 and higher. It's tested primarily with TCL 8.5 and 8.6, which are the most common versions. TCL 9.0 features are progressively being added.
+A: The extension supports TCL versions **8.4 through 9.0**. It's tested primarily with TCL 8.5 and 8.6, which are the most common versions. Interpreters outside this range can be configured manually, but some features may not function correctly.
 
 **Q: Does this extension support Tk?**
 A: Yes! The extension provides full support for Tk including:

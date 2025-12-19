@@ -121,15 +121,26 @@ export class TclHoverProvider implements vscode.HoverProvider {
 
         for (let i = openIdx; i < text.length; i++) {
             const char = text[i];
-            const prevChar = i > 0 ? text[i - 1] : '';
 
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                if (!inString) {
-                    inString = true;
-                    stringChar = char;
-                } else if (char === stringChar) {
-                    inString = false;
-                    stringChar = '';
+            if (char === '"' || char === "'") {
+                // Count consecutive backslashes before this character
+                let backslashCount = 0;
+                let checkPos = i - 1;
+                while (checkPos >= 0 && text[checkPos] === '\\') {
+                    backslashCount++;
+                    checkPos--;
+                }
+                // Quote is escaped only if odd number of backslashes before it
+                const isEscaped = backslashCount % 2 === 1;
+
+                if (!isEscaped) {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = char;
+                    } else if (char === stringChar) {
+                        inString = false;
+                        stringChar = '';
+                    }
                 }
                 continue;
             }

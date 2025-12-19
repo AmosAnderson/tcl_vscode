@@ -98,6 +98,10 @@ export class TclRenameProvider implements vscode.RenameProvider {
         return /^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(name);
     }
 
+    private escapeRegex(lit: string): string {
+        return lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     private isBuiltinCommand(name: string): boolean {
         // Check against the list of built-in TCL commands
         return TCL_BUILTIN_COMMANDS.some(cmd => cmd.name === name);
@@ -183,17 +187,18 @@ export class TclRenameProvider implements vscode.RenameProvider {
         const line = document.lineAt(position.line);
         const lineText = line.text;
         const wordStart = position.character - symbolName.length;
+        const escaped = this.escapeRegex(symbolName);
 
         // Check context to determine symbol type
         
         // Check if it's a procedure definition
-        const procDefPattern = new RegExp(`\\bproc\\s+${symbolName}\\b`);
+        const procDefPattern = new RegExp(`\\bproc\\s+${escaped}\\b`);
         if (procDefPattern.test(lineText)) {
             return 'procedure';
         }
 
         // Check if it's a procedure call (at the beginning of a command)
-        const procCallPattern = new RegExp(`^\\s*${symbolName}\\b`);
+        const procCallPattern = new RegExp(`^\\s*${escaped}\\b`);
         if (procCallPattern.test(lineText)) {
             return 'procedure';
         }
@@ -204,13 +209,13 @@ export class TclRenameProvider implements vscode.RenameProvider {
         }
 
         // Check if it's a variable assignment
-        const varAssignPattern = new RegExp(`\\bset\\s+${symbolName}\\b`);
+        const varAssignPattern = new RegExp(`\\bset\\s+${escaped}\\b`);
         if (varAssignPattern.test(lineText)) {
             return 'variable';
         }
 
         // Check if it's a namespace
-        const namespacePattern = new RegExp(`\\bnamespace\\s+(create|eval)\\s+${symbolName}\\b`);
+        const namespacePattern = new RegExp(`\\bnamespace\\s+(create|eval)\\s+${escaped}\\b`);
         if (namespacePattern.test(lineText)) {
             return 'namespace';
         }
@@ -229,7 +234,8 @@ export class TclRenameProvider implements vscode.RenameProvider {
         procName: string
     ): Promise<boolean> {
         const text = document.getText();
-        const procPattern = new RegExp(`\\bproc\\s+${procName}\\b`, 'g');
+        const escaped = this.escapeRegex(procName);
+        const procPattern = new RegExp(`\\bproc\\s+${escaped}\\b`, 'g');
         return procPattern.test(text);
     }
 
@@ -243,6 +249,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
         interface Replacement { uri: vscode.Uri; range: vscode.Range; }
         const seen = new Set<string>();
         const replacements: Replacement[] = [];
+        const escaped = this.escapeRegex(oldName);
 
         const addReplacement = (uri: vscode.Uri, startPos: vscode.Position, endPos: vscode.Position) => {
             const key = `${uri.toString()}|${startPos.line}|${startPos.character}|${endPos.character}`;
@@ -257,7 +264,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
             for (let lineNum = 0; lineNum < lines.length; lineNum++) {
                 const line = lines[lineNum];
                 // Definitions
-                const procDefPattern = new RegExp(`\\bproc\\s+${oldName}\\b`, 'g');
+                const procDefPattern = new RegExp(`\\bproc\\s+${escaped}\\b`, 'g');
                 let match: RegExpExecArray | null;
                 while ((match = procDefPattern.exec(line)) !== null) {
                     const startPos = new vscode.Position(lineNum, match.index + match[0].lastIndexOf(oldName));
@@ -265,7 +272,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
                     addReplacement(doc.uri, startPos, endPos);
                 }
                 // Calls (allow after whitespace, semicolon, brace, bracket)
-                const procCallPattern = new RegExp(`(^|[\n\r\t ;\\[{])${oldName}\\b`, 'g');
+                const procCallPattern = new RegExp(`(^|[\n\r\t ;\\[{])${escaped}\\b`, 'g');
                 while ((match = procCallPattern.exec(line)) !== null) {
                     // Check if this is part of a proc definition by looking at more context
                     const lineStart = Math.max(0, match.index - 10);
@@ -320,12 +327,13 @@ export class TclRenameProvider implements vscode.RenameProvider {
 
         const text = document.getText();
         const lines = text.split('\n');
+        const escaped = this.escapeRegex(oldName);
 
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
 
             // Find variable assignments (set command)
-            const setPattern = new RegExp(`\\bset\\s+(${oldName})\\b`, 'g');
+            const setPattern = new RegExp(`\\bset\\s+(${escaped})\\b`, 'g');
             let match;
             while ((match = setPattern.exec(line)) !== null) {
                 const startChar = match.index + match[0].indexOf(oldName);
@@ -333,23 +341,23 @@ export class TclRenameProvider implements vscode.RenameProvider {
             }
 
             // Find variable references ($ prefix) - but not array references
-            const varRefPattern = new RegExp(`\\$${oldName}\\b`, 'g');
+            const varRefPattern = new RegExp(`\\$${escaped}\\b`, 'g');
             while ((match = varRefPattern.exec(line)) !== null) {
                 const startChar = match.index + 1; // Skip the $
                 addReplacement(lineNum, startChar, startChar + oldName.length);
             }
 
             // Find array variable references
-            const arrayRefPattern = new RegExp(`\\$${oldName}\\(`, 'g');
+            const arrayRefPattern = new RegExp(`\\$${escaped}\\(`, 'g');
             while ((match = arrayRefPattern.exec(line)) !== null) {
                 const startChar = match.index + 1; // Skip the $
                 addReplacement(lineNum, startChar, startChar + oldName.length);
             }
 
             // Find other variable-related commands (global, variable, upvar, etc.)
-            const varCmdPattern = new RegExp(`\\b(global|variable|upvar)\\s+.*\\b${oldName}\\b`, 'g');
+            const varCmdPattern = new RegExp(`\\b(global|variable|upvar)\\s+.*\\b${escaped}\\b`, 'g');
             while ((match = varCmdPattern.exec(line)) !== null) {
-                const nameMatch = line.substring(match.index).match(new RegExp(`\\b${oldName}\\b`));
+                const nameMatch = line.substring(match.index).match(new RegExp(`\\b${escaped}\\b`));
                 if (nameMatch && nameMatch.index !== undefined) {
                     const startChar = match.index + nameMatch.index;
                     addReplacement(lineNum, startChar, startChar + oldName.length);
@@ -367,6 +375,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
         
         // Find all references across the workspace for namespaces
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}');
+        const escaped = this.escapeRegex(oldName);
         
         for (const file of files) {
             const doc = await vscode.workspace.openTextDocument(file);
@@ -377,7 +386,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
                 const line = lines[lineNum];
                 
                 // Find namespace definitions
-                const nsDefPattern = new RegExp(`\\bnamespace\\s+(create|eval)\\s+${oldName}\\b`, 'g');
+                const nsDefPattern = new RegExp(`\\bnamespace\\s+(create|eval)\\s+${escaped}\\b`, 'g');
                 let match;
                 while ((match = nsDefPattern.exec(line)) !== null) {
                     const startPos = new vscode.Position(lineNum, match.index + match[0].indexOf(oldName));
@@ -386,7 +395,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
                 }
 
                 // Find qualified names using the namespace
-                const qualifiedPattern = new RegExp(`\\b${oldName}::[a-zA-Z_][a-zA-Z0-9_]*`, 'g');
+                const qualifiedPattern = new RegExp(`\\b${escaped}::[a-zA-Z_][a-zA-Z0-9_]*`, 'g');
                 while ((match = qualifiedPattern.exec(line)) !== null) {
                     const startPos = new vscode.Position(lineNum, match.index);
                     const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
@@ -394,9 +403,9 @@ export class TclRenameProvider implements vscode.RenameProvider {
                 }
 
                 // Find namespace current/which commands
-                const nsCmdPattern = new RegExp(`\\bnamespace\\s+(current|which).*${oldName}`, 'g');
+                const nsCmdPattern = new RegExp(`\\bnamespace\\s+(current|which).*${escaped}`, 'g');
                 while ((match = nsCmdPattern.exec(line)) !== null) {
-                    const nameMatch = line.substring(match.index).match(new RegExp(`\\b${oldName}\\b`));
+                    const nameMatch = line.substring(match.index).match(new RegExp(`\\b${escaped}\\b`));
                     if (nameMatch) {
                         const startPos = new vscode.Position(lineNum, match.index + nameMatch.index!);
                         const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);

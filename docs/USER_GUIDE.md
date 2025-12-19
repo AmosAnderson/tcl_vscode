@@ -52,7 +52,7 @@ After installation, the extension automatically activates when you open any TCL 
 
 ### 🔍 Code Analysis
 - Real-time syntax checking
-- Integration with `tclsh -n` for validation
+- Integration with `tclsh` for validation
 - Quick fixes for common issues
 
 ### 🐛 Debugging

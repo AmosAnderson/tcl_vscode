@@ -54,7 +54,7 @@ while { $x < 10 } {
 
 # Procedure to search for a phone number in a string using regex
 proc search_phone_number { input } {
-    set pattern {\m(\d { 3 })[-]?(\d { 3 })[-]?(\d { 4 })\M}
+    set pattern { \m(\d {3})[-]?(\d {3})[-]?(\d {4})\M }
     if { [regexp $pattern $input match area prefix line] } {
         puts "Found phone number: $match"
         test $match

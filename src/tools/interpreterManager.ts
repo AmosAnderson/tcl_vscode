@@ -171,7 +171,11 @@ export class TclInterpreterManager {
 
     private async getTclVersion(tclPath: string): Promise<string | null> {
         try {
-            const { stdout } = await execAsync(`"${tclPath}" -c "puts $tcl_version"`);
+            // tclsh doesn't support -c flag, use echo and pipe instead
+            const cmd = process.platform === 'win32'
+                ? `echo puts $tcl_version | "${tclPath}"`
+                : `echo 'puts $tcl_version' | "${tclPath}"`;
+            const { stdout } = await execAsync(cmd);
             return stdout.trim();
         } catch (error) {
             return null;

@@ -265,8 +265,11 @@ exit 0
 
         for (const candidate of candidates) {
             try {
-                // Attempt running a tiny version print instead of relying on 'which' for portability
-                await execAsync(`"${candidate}" -c "puts $tcl_version"`);
+                // Use echo and pipe to tclsh since tclsh doesn't support -c flag
+                const cmd = process.platform === 'win32'
+                    ? `echo puts $tcl_version | "${candidate}"`
+                    : `echo 'puts $tcl_version' | "${candidate}"`;
+                await execAsync(cmd);
                 return candidate;
             } catch (_) {
                 continue;

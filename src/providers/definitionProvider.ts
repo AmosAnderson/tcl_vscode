@@ -65,7 +65,7 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
     private async findProcedureInWorkspace(procName: string): Promise<vscode.Location[]> {
         const locations: vscode.Location[] = [];
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-    const name = this.escapeRegex(procName);
+        const name = this.escapeRegex(procName);
         const procRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{[^}]*\\}\\s*\\{`, 'g');
 
         for (const file of files) {
@@ -116,6 +116,10 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
 }
 
 export class TclReferenceProvider implements vscode.ReferenceProvider {
+    private escapeRegex(lit: string): string {
+        return lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     async provideReferences(
         document: vscode.TextDocument,
         position: vscode.Position,
@@ -128,11 +132,12 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
         }
 
         const word = document.getText(wordRange);
+        const escapedWord = this.escapeRegex(word);
         const references: vscode.Location[] = [];
 
         // Check if we're on a procedure definition
         const line = document.lineAt(position.line).text;
-        const procDefMatch = line.match(new RegExp(`\\bproc\\s+(${word})\\s*{`));
+        const procDefMatch = line.match(new RegExp(`\\bproc\\s+(${escapedWord})\\s*{`));
         
         if (procDefMatch) {
             // Find all references to this procedure
@@ -146,7 +151,7 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
             }
         } else {
             // Check if we're on a procedure call
-            const procCallMatch = line.match(new RegExp(`\\b${word}\\b`));
+            const procCallMatch = line.match(new RegExp(`\\b${escapedWord}\\b`));
             if (procCallMatch) {
                 const procReferences = await this.findProcedureReferences(word);
                 references.push(...procReferences);
@@ -159,6 +164,7 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
     private async findProcedureReferences(procName: string): Promise<vscode.Location[]> {
         const references: vscode.Location[] = [];
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
+        const escaped = this.escapeRegex(procName);
         
         for (const file of files) {
             try {
@@ -166,7 +172,7 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
                 const text = document.getText();
                 
                 // Find procedure calls (not definitions)
-                const callRegex = new RegExp(`\\b${procName}\\b(?!\\s*{)`, 'g');
+                const callRegex = new RegExp(`\\b${escaped}\\b(?!\\s*{)`, 'g');
                 let match;
                 
                 while ((match = callRegex.exec(text)) !== null) {

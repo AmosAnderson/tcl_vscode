@@ -133,16 +133,27 @@ export class TclFormatter {
 
         while (i < line.length) {
             const char = line[i];
-            const prevChar = i > 0 ? line[i - 1] : '';
 
             // Track string state
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                if (!inString) {
-                    inString = true;
-                    stringChar = char;
-                } else if (char === stringChar) {
-                    inString = false;
-                    stringChar = '';
+            if (char === '"' || char === "'") {
+                // Count consecutive backslashes before this character
+                let backslashCount = 0;
+                let checkPos = i - 1;
+                while (checkPos >= 0 && line[checkPos] === '\\') {
+                    backslashCount++;
+                    checkPos--;
+                }
+                // Quote is escaped only if odd number of backslashes before it
+                const isEscaped = backslashCount % 2 === 1;
+
+                if (!isEscaped) {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = char;
+                    } else if (char === stringChar) {
+                        inString = false;
+                        stringChar = '';
+                    }
                 }
                 result.push(char);
                 i++;
@@ -190,16 +201,27 @@ export class TclFormatter {
 
         while (i < line.length) {
             const char = line[i];
-            const prevChar = i > 0 ? line[i - 1] : '';
 
             // Track string state
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                if (!inString) {
-                    inString = true;
-                    stringChar = char;
-                } else if (char === stringChar) {
-                    inString = false;
-                    stringChar = '';
+            if (char === '"' || char === "'") {
+                // Count consecutive backslashes before this character
+                let backslashCount = 0;
+                let checkPos = i - 1;
+                while (checkPos >= 0 && line[checkPos] === '\\') {
+                    backslashCount++;
+                    checkPos--;
+                }
+                // Quote is escaped only if odd number of backslashes before it
+                const isEscaped = backslashCount % 2 === 1;
+
+                if (!isEscaped) {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = char;
+                    } else if (char === stringChar) {
+                        inString = false;
+                        stringChar = '';
+                    }
                 }
                 result.push(char);
                 i++;
@@ -245,15 +267,26 @@ export class TclFormatter {
 
         for (let i = openIdx; i < str.length; i++) {
             const char = str[i];
-            const prevChar = i > 0 ? str[i - 1] : '';
 
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                if (!inString) {
-                    inString = true;
-                    stringChar = char;
-                } else if (char === stringChar) {
-                    inString = false;
-                    stringChar = '';
+            if (char === '"' || char === "'") {
+                // Count consecutive backslashes before this character
+                let backslashCount = 0;
+                let checkPos = i - 1;
+                while (checkPos >= 0 && str[checkPos] === '\\') {
+                    backslashCount++;
+                    checkPos--;
+                }
+                // Quote is escaped only if odd number of backslashes before it
+                const isEscaped = backslashCount % 2 === 1;
+
+                if (!isEscaped) {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = char;
+                    } else if (char === stringChar) {
+                        inString = false;
+                        stringChar = '';
+                    }
                 }
                 continue;
             }
@@ -279,15 +312,26 @@ export class TclFormatter {
 
         for (let i = openIdx; i < str.length; i++) {
             const char = str[i];
-            const prevChar = i > 0 ? str[i - 1] : '';
 
-            if ((char === '"' || char === "'") && prevChar !== '\\') {
-                if (!inString) {
-                    inString = true;
-                    stringChar = char;
-                } else if (char === stringChar) {
-                    inString = false;
-                    stringChar = '';
+            if (char === '"' || char === "'") {
+                // Count consecutive backslashes before this character
+                let backslashCount = 0;
+                let checkPos = i - 1;
+                while (checkPos >= 0 && str[checkPos] === '\\') {
+                    backslashCount++;
+                    checkPos--;
+                }
+                // Quote is escaped only if odd number of backslashes before it
+                const isEscaped = backslashCount % 2 === 1;
+
+                if (!isEscaped) {
+                    if (!inString) {
+                        inString = true;
+                        stringChar = char;
+                    } else if (char === stringChar) {
+                        inString = false;
+                        stringChar = '';
+                    }
                 }
                 continue;
             }
