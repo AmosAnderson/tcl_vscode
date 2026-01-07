@@ -2,6 +2,14 @@
 
 All notable changes to the "TCL Syntax" extension will be documented in this file.
 
+## [0.4.2] - 2026-01-06
+
+### Dependencies
+- Updated @eslint-community/eslint-utils to v4.9.1
+- Updated @typescript-eslint/eslint-plugin to v8.52.0
+- Updated @typescript-eslint/parser to v8.52.0
+- Updated ts-api-utils to v2.4.0
+
 ## [0.4.1] - 2025-12-18
 
 ### Fixed
@@ -9,6 +17,10 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 - **Security**: Fixed regex injection vulnerabilities in rename provider, reference provider, and definition provider by properly escaping user input
 - **Bug**: Fixed backslash escape detection in string parsing - now correctly handles consecutive backslashes (e.g., `\\"`)
 - **Bug**: Fixed indentation inconsistency in definition provider
+
+### Improved
+- **Formatter**: Enhanced brace spacing logic to preserve regex patterns (e.g., `{\d{3}}`) and list values
+- **Formatter**: Brace spacing now only applies to control-flow keywords (`if`, `while`, `for`, `foreach`, `switch`, `elseif`, `expr`, `catch`, `try`)
 
 ### Changed
 - Removed redundant `onLanguage:tcl` activation event (VS Code auto-generates this)

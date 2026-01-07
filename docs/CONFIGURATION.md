@@ -76,7 +76,9 @@ set x [expr {$a+$b*$c}]
 ### `tcl.format.spacesInsideBraces`
 - **Type**: `boolean`
 - **Default**: `true`
-- **Description**: Add spaces inside braces
+- **Description**: Add spaces inside braces for control-flow statements
+
+**Note**: This setting intelligently applies spacing only to control-flow keywords (`if`, `while`, `for`, `foreach`, `switch`, `elseif`, `expr`, `catch`, `try`) and procedure definitions. Regex patterns (e.g., `{\d{3}}`), list literals, and other value contexts are preserved without modification.
 
 **Example:**
 ```tcl
