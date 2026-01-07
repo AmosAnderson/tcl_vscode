@@ -127,4 +127,30 @@ suite('TCL Formatter Options', () => {
         const expected = 'if { $x > 0 } {\n    puts $x\n}}';
         assert.strictEqual(result, expected);
     });
+
+    test('Should preserve regex patterns without adding spaces', () => {
+        const formatter = new TclFormatter({ spacesInsideBraces: true });
+        // Regex patterns should NOT get spaces added inside braces
+        const input = 'set pattern {\\d{3}}';
+        const expected = 'set pattern {\\d{3}}';
+        const result = formatter.format(input);
+        assert.strictEqual(result, expected);
+    });
+
+    test('Should preserve complex regex patterns', () => {
+        const formatter = new TclFormatter({ spacesInsideBraces: true });
+        // Complex phone number regex - should not be modified
+        const input = 'set phone {\\m(\\d{3})[-]?(\\d{3})[-]?(\\d{4})\\M}';
+        const expected = 'set phone {\\m(\\d{3})[-]?(\\d{3})[-]?(\\d{4})\\M}';
+        const result = formatter.format(input);
+        assert.strictEqual(result, expected);
+    });
+
+    test('Should preserve list values without adding spaces', () => {
+        const formatter = new TclFormatter({ spacesInsideBraces: true });
+        const input = 'set items {a b c d}';
+        const expected = 'set items {a b c d}';
+        const result = formatter.format(input);
+        assert.strictEqual(result, expected);
+    });
 });

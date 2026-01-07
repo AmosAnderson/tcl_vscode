@@ -115,13 +115,35 @@ export class TclFormatter {
             return `[expr ${spaceOps(inner.trim())}]`;
         });
 
-        // Inside braces for conditions: find { ... }
-        line = line.replace(/\{([^{}]+)\}/g, (_m, inner) => {
+        // Only apply operator spacing inside braces that follow control-flow keywords
+        // This prevents breaking regex patterns like {\d{3}} or list values
+        const conditionKeywords = /\b(if|while|for|foreach|switch|elseif|expr|catch|try)\s*$/i;
+        
+        // Process each brace group, only spacing those after keywords
+        let result = '';
+        let lastIndex = 0;
+        const braceRegex = /\{([^{}]*)\}/g;
+        let match;
+        
+        while ((match = braceRegex.exec(line)) !== null) {
+            const precedingText = line.substring(0, match.index);
+            result += line.substring(lastIndex, match.index);
+            
+            const inner = match[1];
             const trimmed = inner.trim();
-            const spaced = spaceOps(trimmed);
-            return `{${spaced}}`;
-        });
-        return line;
+            
+            // Only apply operator spacing if preceded by a control-flow keyword
+            if (conditionKeywords.test(precedingText.trimEnd())) {
+                result += `{${spaceOps(trimmed)}}`;
+            } else {
+                result += match[0]; // Keep original
+            }
+            
+            lastIndex = match.index + match[0].length;
+        }
+        
+        result += line.substring(lastIndex);
+        return result;
     }
 
     private applyBraceSpacing(line: string): string {
@@ -175,7 +197,7 @@ export class TclFormatter {
                     const trimmed = inner.trim();
                     if (!trimmed) {
                         result.push('{}');
-                    } else if (this.options.spacesInsideBraces) {
+                    } else if (this.options.spacesInsideBraces && this.shouldAddSpacesInsideBrace(result.join(''))) {
                         result.push(`{ ${trimmed} }`);
                     } else {
                         result.push(`{${trimmed}}`);
@@ -258,6 +280,40 @@ export class TclFormatter {
         }
 
         return result.join('');
+    }
+
+    /**
+     * Determines if spaces should be added inside braces based on context.
+     * Only adds spaces after control-flow keywords (if, while, for, foreach, switch, elseif, expr)
+     * where the braces contain conditions/expressions.
+     * Does NOT add spaces for value contexts like regex patterns, string literals, list values, etc.
+     */
+    private shouldAddSpacesInsideBrace(precedingText: string): boolean {
+        // Get the text immediately before the brace (trimmed)
+        const trimmed = precedingText.trimEnd();
+        
+        // Keywords after which condition/expression braces should have spaces
+        const conditionKeywords = /\b(if|while|for|foreach|switch|elseif|expr|catch|try)\s*$/i;
+        
+        // Check if preceded by a control-flow keyword
+        if (conditionKeywords.test(trimmed)) {
+            return true;
+        }
+        
+        // Also allow spaces after closing brace (for chained conditions like "} {")
+        // This handles the body block after a condition
+        if (/}\s*$/.test(trimmed)) {
+            return true;
+        }
+        
+        // Allow spaces in proc argument and body braces
+        // Matches: "proc name" or "proc name {args}"
+        if (/\bproc\s+[^\s{]+\s*$/.test(trimmed) || /\bproc\s+[^\s{]+\s+\{[^}]*\}\s*$/.test(trimmed)) {
+            return true;
+        }
+        
+        // For all other cases (regex patterns, string values, list literals, etc.), don't add spaces
+        return false;
     }
 
     private findMatchingBraceInString(str: string, openIdx: number): number {
@@ -367,10 +423,48 @@ export class TclFormatter {
         // Separate adjacent braces
         line = line.replace(/}\s*\{/g, '} {');
 
-        // Ensure tokens directly before an opening brace are separated by a space (avoid $, @)
-        line = line.replace(/([A-Za-z0-9_\)\]])\s*\{/g, (_m, prev) => `${prev} {`);
+        // Ensure tokens directly before an opening brace are separated by a space,
+        // but only if we're not inside a brace-quoted string (to preserve regex quantifiers like \d{3})
+        line = this.addSpaceBeforeTopLevelBraces(line);
 
         return line;
+    }
+
+    /**
+     * Adds a space before opening braces that follow alphanumeric characters,
+     * but only at the "top level" (not inside brace-quoted content like regex patterns).
+     */
+    private addSpaceBeforeTopLevelBraces(line: string): string {
+        const result: string[] = [];
+        let braceDepth = 0;
+        
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            
+            if (char === '{') {
+                // Check if we should add space before this brace
+                // Only add space at top level (braceDepth === 0) when preceded by alphanumeric/]/
+                if (braceDepth === 0 && i > 0) {
+                    const prevChar = line[i - 1];
+                    // If preceded by alphanumeric, ), or ] and not already spaced
+                    if (/[A-Za-z0-9_\)\]]/.test(prevChar)) {
+                        // Check if there's already a space (shouldn't match but be safe)
+                        if (result.length > 0 && result[result.length - 1] !== ' ') {
+                            result.push(' ');
+                        }
+                    }
+                }
+                braceDepth++;
+                result.push(char);
+            } else if (char === '}') {
+                braceDepth = Math.max(0, braceDepth - 1);
+                result.push(char);
+            } else {
+                result.push(char);
+            }
+        }
+        
+        return result.join('');
     }
 
     private createIndent(level: number): string {
