@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as os from 'os';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 
@@ -16,10 +17,11 @@ export class TclCoverageProvider {
     private _coverageData = new Map<string, CoverageData>();
     private _decorationType: vscode.TextEditorDecorationType;
     private _uncoveredDecorationType: vscode.TextEditorDecorationType;
+    private _disposables: vscode.Disposable[] = [];
 
     constructor() {
         this._outputChannel = vscode.window.createOutputChannel('TCL Coverage');
-        
+
         // Create decoration types for coverage visualization
         this._decorationType = vscode.window.createTextEditorDecorationType({
             backgroundColor: 'rgba(0, 255, 0, 0.1)',
@@ -32,7 +34,9 @@ export class TclCoverageProvider {
         });
 
         // Listen for active editor changes to update coverage display
-    vscode.window.onDidChangeActiveTextEditor(this.updateCoverageDisplay.bind(this));
+        this._disposables.push(
+            vscode.window.onDidChangeActiveTextEditor(this.updateCoverageDisplay.bind(this))
+        );
     }
 
     public async generateCoverage(testFiles: string[]): Promise<void> {
@@ -145,8 +149,17 @@ puts "Coverage data saved"
         return new Promise((resolve, reject) => {
             const config = vscode.workspace.getConfiguration('tcl');
             const tclPath = config.get<string>('test.tclPath', 'tclsh');
-            
-            const process = spawn(tclPath, ['-c', script], {
+
+            // Write script to temp file — tclsh does not support a -c flag
+            const tmpFile = path.join(os.tmpdir(), `tcl_coverage_${Date.now()}.tcl`);
+            try {
+                fs.writeFileSync(tmpFile, script, 'utf8');
+            } catch (err) {
+                reject(err);
+                return;
+            }
+
+            const process = spawn(tclPath, [tmpFile], {
                 stdio: ['pipe', 'pipe', 'pipe']
             });
 
@@ -162,6 +175,7 @@ puts "Coverage data saved"
             });
 
             process.on('close', (code) => {
+                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
                 if (code === 0) {
                     resolve(output);
                 } else {
@@ -170,6 +184,7 @@ puts "Coverage data saved"
             });
 
             process.on('error', (error) => {
+                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
                 reject(error);
             });
         });
@@ -221,7 +236,9 @@ puts "Coverage data saved"
 
     private async readCoverageFile(): Promise<string> {
         try {
-            const data = await fs.promises.readFile('coverage.dat', 'utf8');
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) return '';
+            const data = await fs.promises.readFile(path.join(workspaceRoot, 'coverage.dat'), 'utf8');
             return data;
         } catch {
             return '';
@@ -434,6 +451,8 @@ puts "Coverage data saved"
     }
 
     public dispose(): void {
+        this._disposables.forEach(d => d.dispose());
+        this._disposables = [];
         this._outputChannel.dispose();
         this._decorationType.dispose();
         this._uncoveredDecorationType.dispose();

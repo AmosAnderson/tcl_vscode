@@ -33,6 +33,13 @@ export class TclFormatter {
             let trimmed = line.trim();
             if (trimmed === '') { out.push(''); continue; }
 
+            // Comment lines: preserve content unchanged, indent at current level,
+            // and do NOT count their braces (they must not affect indentation).
+            if (trimmed.startsWith('#')) {
+                out.push(this.createIndent(indent) + trimmed);
+                continue;
+            }
+
             // Apply spacing rules early (except on pure brace lines)
             trimmed = this.applyStructuralSpacing(trimmed);
 
@@ -72,8 +79,10 @@ export class TclFormatter {
             // Emit line
             out.push(this.createIndent(indent) + trimmed);
 
-            // Count brace delta (ignore those inside strings via helper)
-            const counts = this.countBraces(trimmed);
+            // Count brace delta — strip inline comments first so braces inside
+            // "; # ..." do not affect indentation.
+            const lineForCounting = this.stripInlineComment(trimmed);
+            const counts = this.countBraces(lineForCounting);
             const remainingClosings = Math.max(0, counts.closing - leadingClosings);
 
             // Adjust indent for each opening brace that is not closed on the same line
@@ -85,19 +94,43 @@ export class TclFormatter {
     }
 
     private normalizeInlineBlocks(text: string): string {
-        // Only handle simple one-line inline forms used in tests.
-        // proc form
-        text = text.replace(/\bproc\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
+        // Expand single-line inline block forms into properly indented multi-line forms.
+        // Process line-by-line so that comment lines (starting with #) are never modified.
+        return text.split('\n').map(line => {
+            if (line.trimStart().startsWith('#')) {
+                return line;
+            }
+            return this.expandInlineLine(line);
+        }).join('\n');
+    }
+
+    private expandInlineLine(line: string): string {
+        // proc name {args}{body}
+        line = line.replace(/\bproc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
             (_m, name, args, body) => `proc ${name} {${args.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
-        // if form(s) possibly chained: if {cond}{body}
-        // Replace iteratively to handle nested inline ifs
+
+        // while {cond}{body}
+        line = line.replace(/\bwhile\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
+            (_m, cond, body) => `while {${cond.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
+
+        // for {init}{cond}{step}{body}
+        line = line.replace(/\bfor\s+\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}\n]*)\}/g,
+            (_m, init, cond, step, body) =>
+                `for {${init.trim()}} {${cond.trim()}} {${step.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
+
+        // foreach varName list {body}  (list may be brace-quoted, variable, or bare word)
+        line = line.replace(/\bforeach\s+(\S+)\s+(\{[^}]*\}|\S+)\s*\{([^}\n]*)\}/g,
+            (_m, varName, list, body) => `foreach ${varName} ${list} {\n${this.createIndent(1)}${body.trim()}\n}`);
+
+        // if {cond}{body} — replace iteratively to handle chained inline ifs
         let prev: string;
         do {
-            prev = text;
-            text = text.replace(/\bif\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
+            prev = line;
+            line = line.replace(/\bif\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
                 (_m, cond, body) => `if {${cond.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
-        } while (text !== prev);
-        return text;
+        } while (line !== prev);
+
+        return line;
     }
 
     private applyOperatorSpacing(line: string): string {
@@ -465,6 +498,60 @@ export class TclFormatter {
         }
         
         return result.join('');
+    }
+
+    /**
+     * Strips an inline TCL comment ("; # ...") from a line for the purposes of
+     * brace counting.  A "#" starts a comment only when it appears as the first
+     * non-whitespace token of a new command, which on a single line means after
+     * a ";" separator.  Strings and nested brackets/braces are respected so that
+     * a literal semicolon inside a string or brace group is not treated as a
+     * command separator.
+     */
+    private stripInlineComment(line: string): string {
+        let inString = false;
+        let stringChar = '';
+        let braceDepth = 0;
+        let bracketDepth = 0;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+
+            // Track string boundaries (double-quote strings only; TCL single-quotes
+            // are not special but we mirror the logic used elsewhere in this class).
+            if ((char === '"' || char === "'") && !inString) {
+                inString = true;
+                stringChar = char;
+                continue;
+            }
+            if (inString && char === stringChar) {
+                let backslashes = 0;
+                let k = i - 1;
+                while (k >= 0 && line[k] === '\\') { backslashes++; k--; }
+                if (backslashes % 2 === 0) {
+                    inString = false;
+                    stringChar = '';
+                }
+                continue;
+            }
+            if (inString) { continue; }
+
+            if (char === '{') { braceDepth++; }
+            else if (char === '}') { braceDepth = Math.max(0, braceDepth - 1); }
+            else if (char === '[') { bracketDepth++; }
+            else if (char === ']') { bracketDepth = Math.max(0, bracketDepth - 1); }
+
+            // A ";" at the top level is a command separator.  If a "#" follows
+            // (with optional whitespace), everything from the ";" onward is a comment.
+            if (char === ';' && braceDepth === 0 && bracketDepth === 0) {
+                let j = i + 1;
+                while (j < line.length && line[j] === ' ') { j++; }
+                if (j < line.length && line[j] === '#') {
+                    return line.substring(0, i);
+                }
+            }
+        }
+        return line;
     }
 
     private createIndent(level: number): string {

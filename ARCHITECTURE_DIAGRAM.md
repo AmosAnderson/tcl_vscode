@@ -15,7 +15,7 @@ activate(context) in src/extension.ts
 ┌─────────────────────────────────────────────────────┐
 │ PHASE 1-5: IMMEDIATE INITIALIZATION (SYNCHRONOUS)   │
 ├─────────────────────────────────────────────────────┤
-│                                                      │
+│                                                     │
 │  ┌──────────────────────────────────────────┐       │
 │  │ FORMATTER LAYER                          │       │
 │  ├──────────────────────────────────────────┤       │
@@ -23,7 +23,7 @@ activate(context) in src/extension.ts
 │  │ └─ Range Formatting Provider             │       │
 │  │    (Uses TclFormatter for pure logic)    │       │
 │  └──────────────────────────────────────────┘       │
-│                                                      │
+│                                                     │
 │  ┌──────────────────────────────────────────┐       │
 │  │ DIAGNOSTIC & CODE ACTION LAYER           │       │
 │  ├──────────────────────────────────────────┤       │
@@ -32,7 +32,7 @@ activate(context) in src/extension.ts
 │  │ └─ Code Action Provider                  │       │
 │  │    └─ Offers quick fixes                 │       │
 │  └──────────────────────────────────────────┘       │
-│                                                      │
+│                                                     │
 │  ┌──────────────────────────────────────────┐       │
 │  │ INTELLISENSE PROVIDERS                   │       │
 │  ├──────────────────────────────────────────┤       │
@@ -40,68 +40,68 @@ activate(context) in src/extension.ts
 │  │ │  ├─ Uses: TCL_BUILTIN_COMMANDS         │       │
 │  │ │  ├─ Caches procedures per document     │       │
 │  │ │  └─ Offers: commands, snippets, vars   │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ ├─ Hover Provider                        │       │
 │  │ │  ├─ Uses: TCL_BUILTIN_COMMANDS         │       │
 │  │ │  └─ Shows: signatures, documentation   │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ ├─ Symbol Provider (Document & Workspace)│       │
 │  │ │  ├─ Finds: procedures, namespaces, vars│       │
 │  │ │  └─ Builds: namespace hierarchy        │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ ├─ Definition Provider                   │       │
 │  │ │  ├─ Searches: document, then workspace │       │
 │  │ │  └─ Returns: procedure locations       │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ └─ Reference Provider                    │       │
 │  │    └─ Finds: all references in workspace │       │
 │  └──────────────────────────────────────────┘       │
-│                                                      │
+│                                                     │
 │  ┌──────────────────────────────────────────┐       │
 │  │ DEBUG LAYER                              │       │
 │  ├──────────────────────────────────────────┤       │
 │  │ ├─ Debug Adapter Factory                 │       │
 │  │ │  └─ Creates inline TclDebugSession     │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ ├─ Debug Configuration Provider          │       │
 │  │ │  └─ Provides launch configurations     │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ └─ REPL Commands                         │       │
 │  │    ├─ Start REPL (terminal-based)        │       │
 │  │    ├─ Evaluate Selection                 │       │
 │  │    └─ Run Current File                   │       │
 │  └──────────────────────────────────────────┘       │
-│                                                      │
+│                                                     │
 │  ┌──────────────────────────────────────────┐       │
 │  │ TESTING & COVERAGE LAYER                 │       │
 │  ├──────────────────────────────────────────┤       │
 │  │ ├─ Test Provider (Test Explorer UI)      │       │
 │  │ │  ├─ Discovers tests in workspace       │       │
 │  │ │  └─ Runs tests via TestController      │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ └─ Coverage Provider                     │       │
 │  │    ├─ Instruments TCL code               │       │
 │  │    └─ Visualizes coverage with decorations│      │
 │  └──────────────────────────────────────────┘       │
-│                                                      │
+│                                                     │
 │  ┌──────────────────────────────────────────┐       │
 │  │ REFACTORING LAYER                        │       │
 │  ├──────────────────────────────────────────┤       │
 │  │ ├─ Rename Provider                       │       │
 │  │ │  └─ Renames: procedures, variables, ns │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ └─ Extract Provider                      │       │
 │  │    ├─ Extract Procedure                  │       │
 │  │    └─ Extract Variable                   │       │
 │  └──────────────────────────────────────────┘       │
-│                                                      │
+│                                                     │
 └─────────────────────────────────────────────────────┘
         ↓
 ┌─────────────────────────────────────────────────────┐
 │ PHASE 6: LAZY INITIALIZATION ON FIRST COMMAND       │
 ├─────────────────────────────────────────────────────┤
 │ (Only initialized when user invokes first command)  │
-│                                                      │
+│                                                     │
 │  ┌──────────────────────────────────────────┐       │
 │  │ TOOL MANAGERS                            │       │
 │  ├──────────────────────────────────────────┤       │
@@ -109,22 +109,22 @@ activate(context) in src/extension.ts
 │  │ │  ├─ Discovers: system, tclkit,         │       │
 │  │ │  │              activetcl, custom      │       │
 │  │ │  └─ Commands: select, add, refresh     │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ ├─ Package Manager                       │       │
-│  │ │  ├─ Discovers: Tcllib, Tklib, local   │       │
+│  │ │  ├─ Discovers: Tcllib, Tklib, local    │       │
 │  │ │  └─ Commands: create, updateIndex      │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ ├─ Dependency Manager                    │       │
 │  │ │  ├─ Scans: package require statements  │       │
 │  │ │  └─ Commands: check, install, report   │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ ├─ Project Templates                     │       │
 │  │ │  └─ Scaffolds: program, library, GUI   │       │
-│  │ │                                         │       │
+│  │ │                                        │       │
 │  │ └─ Task Provider                         │       │
 │  │    └─ Integrates: build tasks            │       │
 │  └──────────────────────────────────────────┘       │
-│                                                      │
+│                                                     │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -191,35 +191,35 @@ Document Content (TCL file)
     ├────────────────────────────────────────────┤
     │                                            │
     │  COMPLETION PROVIDER                       │
-    │  ├─ Regex: "proc name {args}"             │
-    │  ├─ Extracts: procedure names             │
-    │  └─ Cache: per document URI               │
+    │  ├─ Regex: "proc name {args}"              │
+    │  ├─ Extracts: procedure names              │
+    │  └─ Cache: per document URI                │
     │                                            │
     │  SYMBOL PROVIDER                           │
-    │  ├─ Line-by-line matching                 │
-    │  ├─ Extracts: procedures, namespaces,     │
-    │  │            variables, packages         │
-    │  └─ Builds: namespace hierarchy (stack)   │
+    │  ├─ Line-by-line matching                  │
+    │  ├─ Extracts: procedures, namespaces,      │
+    │  │            variables, packages          │
+    │  └─ Builds: namespace hierarchy (stack)    │
     │                                            │
     │  DEFINITION PROVIDER                       │
-    │  ├─ Regex: "proc name {args} {"           │
-    │  ├─ Searches: current doc, then workspace │
-    │  └─ Returns: Location objects             │
+    │  ├─ Regex: "proc name {args} {"            │
+    │  ├─ Searches: current doc, then workspace  │
+    │  └─ Returns: Location objects              │
     │                                            │
     │  HOVER PROVIDER                            │
-    │  ├─ Finds: procedure definitions          │
-    │  ├─ Parses: preceding comments            │
-    │  └─ Returns: formatted documentation      │
+    │  ├─ Finds: procedure definitions           │
+    │  ├─ Parses: preceding comments             │
+    │  └─ Returns: formatted documentation       │
     │                                            │
     │  DIAGNOSTIC PROVIDER                       │
-    │  ├─ Syntax check: brace/bracket balance   │
-    │  ├─ Optional: tclsh validation            │
-    │  └─ Reports: errors, warnings             │
+    │  ├─ Syntax check: brace/bracket balance    │
+    │  ├─ Optional: tclsh validation             │
+    │  └─ Reports: errors, warnings              │
     │                                            │
     │  RENAME PROVIDER                           │
-    │  ├─ Searches: workspace with regex        │
-    │  ├─ Finds: all references                 │
-    │  └─ Returns: WorkspaceEdit                │
+    │  ├─ Searches: workspace with regex         │
+    │  ├─ Finds: all references                  │
+    │  └─ Returns: WorkspaceEdit                 │
     │                                            │
     └────────────────────────────────────────────┘
             ↓
@@ -238,22 +238,22 @@ Document Content (TCL file)
     └────────────┬────────────┘
                  ↓
         ┌─────────────────────────────────────┐
-        │ TCL_BUILTIN_COMMANDS & SNIPPETS    │
+        │ TCL_BUILTIN_COMMANDS & SNIPPETS     │
         │ (Central Language Knowledge)        │
         └────────────┬────────────────────────┘
                      ↓
-    ┌────────────────┴────────────────────────┐
-    │                                          │
-    ↓                                          ↓
+    ┌────────────────┴──────────────────────────┐
+    │                                           │
+    ↓                                           ↓
 Completion Provider ◄─────────────────► Hover Provider
-    │                                          │
+    │                                           │
     ├─────► Symbol Provider ◄────────────────┤
-    │           │                              │
-    │           ├─────► Definition Provider    │
-    │           │           │                  │
+    │           │                               │
+    │           ├─────► Definition Provider     │
+    │           │           │                   │
     │           │           └─► Reference Prov.
-    │           │                              │
-    ↓           ↓                              ↓
+    │           │                               │
+    ↓           ↓                               ↓
 Diagnostic Provider ◄──────► Code Action Provider
     │                              │
     ├─────────────────────────────┤

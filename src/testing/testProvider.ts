@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { spawn } from 'child_process';
 
 interface TclTestResult {
@@ -254,11 +256,14 @@ export class TclTestProvider {
             const config = vscode.workspace.getConfiguration('tcl');
             const tclPath = config.get<string>('test.tclPath', 'tclsh');
             
-            // Create a test execution script
+            // Create a test execution script and write to temp file
+            // (tclsh does not support a -c flag for inline script execution)
             const testScript = this.createTestExecutionScript(file, testName);
-            
+            const tmpFile = path.join(os.tmpdir(), `tcl_test_${Date.now()}.tcl`);
+            fs.writeFileSync(tmpFile, testScript, 'utf8');
+
             const startTime = Date.now();
-            const process = spawn(tclPath, ['-c', testScript], {
+            const process = spawn(tclPath, [tmpFile], {
                 cwd: path.dirname(file),
                 stdio: ['pipe', 'pipe', 'pipe']
             });
@@ -275,8 +280,9 @@ export class TclTestProvider {
             });
 
             process.on('close', (code) => {
+                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
                 const duration = Date.now() - startTime;
-                
+
                 // Parse the test result
                 const result: TclTestResult = {
                     name: testName,
@@ -306,6 +312,7 @@ export class TclTestProvider {
             });
 
             process.on('error', (error) => {
+                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
                 reject(error);
             });
         });

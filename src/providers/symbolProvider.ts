@@ -9,12 +9,31 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
         const text = document.getText();
         const lines = text.split('\n');
 
-        // Stack to track namespace context
-        const namespaceStack: vscode.DocumentSymbol[] = [];
+        // Stack to track namespace context; each entry records the brace depth at which the
+        // namespace block was opened so that proc-body closing braces don't accidentally pop it.
+        const namespaceStack: { symbol: vscode.DocumentSymbol; depth: number }[] = [];
         let currentNamespace: vscode.DocumentSymbol | null = null;
+        let braceDepth = 0;
 
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
+
+            // Update brace depth character-by-character and pop namespaces as they close.
+            // This must happen before we try to match new namespace definitions on this line.
+            for (const ch of line) {
+                if (ch === '{') {
+                    braceDepth++;
+                } else if (ch === '}') {
+                    braceDepth--;
+                    while (namespaceStack.length > 0 &&
+                           braceDepth < namespaceStack[namespaceStack.length - 1].depth) {
+                        namespaceStack.pop();
+                        currentNamespace = namespaceStack.length > 0
+                            ? namespaceStack[namespaceStack.length - 1].symbol
+                            : null;
+                    }
+                }
+            }
 
             // Match procedure definitions
             const procMatch = line.match(/^\s*proc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*\{/);
@@ -22,14 +41,10 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                 const procName = procMatch[1];
 
                 // Extract arguments - look for simple case first
-                let args = '';
                 const simpleMatch = line.match(/^\s*proc\s+[a-zA-Z_][a-zA-Z0-9_:]*\s*\{([^}]*)\}/);
-                if (simpleMatch) {
-                    args = simpleMatch[1].trim();
-                } else {
-                    // Multi-line argument list - just indicate it has args
-                    args = '...';
-                }
+                const args = simpleMatch
+                    ? simpleMatch[1].trim()
+                    : '...'; // Multi-line argument list: indicate it has args
 
                 const range = new vscode.Range(lineNum, 0, lineNum, line.length);
                 const selectionRange = new vscode.Range(
@@ -81,7 +96,7 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                     symbols.push(nsSymbol);
                 }
 
-                namespaceStack.push(nsSymbol);
+                namespaceStack.push({ symbol: nsSymbol, depth: braceDepth });
                 currentNamespace = nsSymbol;
             }
 
@@ -169,11 +184,6 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                 symbols.push(packageSymbol);
             }
 
-            // Handle closing braces for namespaces
-            if (line.match(/^\s*}\s*$/) && namespaceStack.length > 0) {
-                namespaceStack.pop();
-                currentNamespace = namespaceStack.length > 0 ? namespaceStack[namespaceStack.length - 1] : null;
-            }
         }
 
         return symbols;
@@ -181,11 +191,16 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
 }
 
 export class TclWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
+    private escapeRegex(lit: string): string {
+        return lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     async provideWorkspaceSymbols(
         query: string,
         token: vscode.CancellationToken
     ): Promise<vscode.SymbolInformation[]> {
         const symbols: vscode.SymbolInformation[] = [];
+        const escapedQuery = this.escapeRegex(query);
         
         // Find all TCL files in workspace
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
@@ -199,7 +214,7 @@ export class TclWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvide
             const text = document.getText();
             
             // Search for procedures matching the query
-            const procRegex = new RegExp(`\\bproc\\s+(\\w*${query}\\w*)\\s*\\{`, 'gi');
+            const procRegex = new RegExp(`\\bproc\\s+(\\w*${escapedQuery}\\w*)\\s*\\{`, 'gi');
             let match;
 
             while ((match = procRegex.exec(text)) !== null) {
@@ -227,7 +242,7 @@ export class TclWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvide
             }
             
             // Search for namespaces matching the query
-            const nsRegex = new RegExp(`namespace\\s+eval\\s+(\\w*${query}\\w*)`, 'gi');
+            const nsRegex = new RegExp(`namespace\\s+eval\\s+(\\w*${escapedQuery}\\w*)`, 'gi');
             
             while ((match = nsRegex.exec(text)) !== null) {
                 const nsName = match[1];

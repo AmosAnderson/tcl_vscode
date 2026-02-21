@@ -113,7 +113,10 @@ export async function activate(context: vscode.ExtensionContext) {
             
             if (formatOnSave && event.document.languageId === 'tcl') {
                 event.waitUntil(
-                    vscode.commands.executeCommand('editor.action.formatDocument')
+                    vscode.commands.executeCommand<vscode.TextEdit[]>(
+                        'vscode.executeFormatDocumentProvider',
+                        event.document.uri
+                    )
                 );
             }
         })
@@ -134,7 +137,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register Phase 5 features: Testing Support
     const testProvider = new TclTestProvider();
-    testProvider.discoverAllTests();
+    await testProvider.discoverAllTests();
 
     const coverageProvider = new TclCoverageProvider();
     

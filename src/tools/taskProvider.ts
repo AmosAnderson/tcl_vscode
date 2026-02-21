@@ -340,7 +340,7 @@ export class TclTaskProviderManager {
     private taskProvider: vscode.Disposable | undefined;
 
     public register(context: vscode.ExtensionContext): void {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         const provider = new TclTaskProvider(workspaceRoot);
         
         this.taskProvider = vscode.tasks.registerTaskProvider('tcl', provider);

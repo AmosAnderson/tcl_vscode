@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -176,17 +177,28 @@ export class TclPackageManager {
                 puts $packages
             `;
             
-            const { stdout } = await execAsync(`"${interpreterPath}" -c "${script}"`);
-            const packageList = this.parseTclList(stdout.trim());
+            const tempScriptPath = path.join(os.tmpdir(), `tcl_pkg_discover_${Date.now()}.tcl`);
+
+            try {
+                await fs.promises.writeFile(tempScriptPath, script, 'utf8');
+                const { stdout } = await execAsync(`"${interpreterPath}" "${tempScriptPath}"`);
+                const packageList = this.parseTclList(stdout.trim());
             
-            for (const [name, version] of packageList) {
-                this.packageIndex.packages.push({
-                    name: name,
-                    version: version,
-                    description: `System package`,
-                    location: 'system',
-                    type: 'system'
-                });
+                for (const [name, version] of packageList) {
+                    this.packageIndex.packages.push({
+                        name: name,
+                        version: version,
+                        description: `System package`,
+                        location: 'system',
+                        type: 'system'
+                    });
+                }
+            } finally {
+                try {
+                    await fs.promises.unlink(tempScriptPath);
+                } catch (_) {
+                    // Ignore temp file cleanup errors
+                }
             }
         } catch (error) {
             this.outputChannel.appendLine(`Error discovering system packages: ${error}`);

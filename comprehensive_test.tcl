@@ -19,47 +19,47 @@ set hex_value 0xFF
 # Test namespace definition and usage
 namespace eval ::myapp {
     namespace export greet calculate process_data
-    
+
     # Namespace variables
     variable app_name "My TCL Application"
     variable version "1.0"
-    
+
     # Test procedure with comments (for hover documentation)
     # This procedure greets a user with optional personalization
     # @param name - The name to greet (optional)
-    proc greet {name} {
+    proc greet { name } {
         global debug_mode
         variable app_name
-        
-        if {$name eq ""} {
+
+        if { $name eq "" } {
             puts "Hello, stranger! Welcome to $app_name"
         } else {
             puts "Hello, $name! Welcome to $app_name"
         }
     }
-    
+
     # Mathematical calculation procedure
     # Calculates factorial of a number recursively
     # @param n - The number to calculate factorial for
-    proc factorial {n} {
-        if {$n <= 1} {
+    proc factorial { n } {
+        if { $n <= 1 } {
             test 1
         } else {
-            test [expr {$n * [factorial [expr {$n - 1}]]}]
+            test [expr { $n * [factorial [expr {$n - 1}]] }]
         }
     }
-    
+
     # String manipulation examples
-    proc process_data {input_string} {
+    proc process_data { input_string } {
         set length [string length $input_string]
         set upper [string toupper $input_string]
         set words [split $input_string " "]
-        
+
         puts "Original: $input_string"
         puts "Length: $length"
         puts "Uppercase: $upper"
         puts "Words: $words"
-        
+
         test [list $length $upper $words]
     }
 }
@@ -71,23 +71,23 @@ namespace eval ::myapp {
 # Test various control structures
 proc test_control_structures {} {
     # For loop
-    for {set i 0} {$i < 5} {incr i} {
+    for { set i 0 } { $i < 5 } { incr i } {
         puts "Count: $i"
     }
-    
+
     # Foreach loop
     set fruits {apple banana orange grape}
     foreach fruit $fruits {
         puts "Fruit: $fruit"
     }
-    
+
     # While loop
     set count 0
-    while {$count < 3} {
+    while { $count < 3 } {
         puts "While count: $count"
         incr count
     }
-    
+
     # Switch statement
     set day "Monday"
     switch $day {
@@ -101,11 +101,11 @@ proc test_control_structures {} {
             puts "Regular day"
         }
     }
-    
+
     # Try-catch example
     if {[catch {
-        set result [expr {10 / 0}]
-    } error]} {
+            set result [expr { 10 / 0 }]
+        } error]} {
         puts "Error caught: $error"
     }
 }
@@ -117,12 +117,12 @@ proc test_control_structures {} {
 # Test Tk widget creation
 proc createWindow1 {} {
     package require Tk
-    
+
     # Create main window
     toplevel .mywindow
     wm title .mywindow "TCL Test Application"
     wm geometry .mywindow "300x200"
-    
+
     # Create widgets
     label .mywindow.label -text "Enter a number:" -font {Arial 12}
     entry .mywindow.entry -textvariable number -width 20
@@ -130,16 +130,16 @@ proc createWindow1 {} {
         set result [::myapp::factorial $::number]
         tk_messageBox -message "Factorial of $::number is $result" -title "Result"
     }
-    
+
     # Layout widgets
     pack .mywindow.label -pady 10
     pack .mywindow.entry -pady 5
     pack .mywindow.button -pady 10
-    
+
     # Menu example
     menu .mywindow.menubar
     .mywindow configure -menu .mywindow.menubar
-    
+
     menu .mywindow.menubar.file
     .mywindow.menubar add cascade -label "File" -menu .mywindow.menubar.file
     .mywindow.menubar.file add command -label "New" -command {puts "New file"}
@@ -152,7 +152,7 @@ proc createWindow1 {} {
 
 # Test Expect commands (if available)
 proc test_expect {} {
-    if {[catch {package require Expect}] == 0} {
+    if { [catch {package require Expect}] == 0 } {
         spawn ssh user@example.com
         expect {
             "password:" {
@@ -185,18 +185,18 @@ proc test_data_structures {} {
         city "New York"
         email "john@example.com"
     }
-    
+
     puts "User name: $user_info(name)"
     puts "User age: $user_info(age)"
-    
+
     # Dictionary example (TCL 8.5+)
     set config [dict create \
-        database_host "localhost" \
-        database_port 5432 \
-        database_name "myapp" \
-        debug_enabled true \
+    database_host "localhost" \
+    database_port 5432 \
+    database_name "myapp" \
+    debug_enabled true \
     ]
-    
+
     puts "Database host: [dict get $config database_host]"
     puts "Debug enabled: [dict get $config debug_enabled]"
 }
@@ -212,16 +212,16 @@ proc test_file_operations {} {
     puts $filehandle "Hello, World!"
     puts $filehandle "This is a test file."
     close $filehandle
-    
+
     # Read from file
     set filehandle [open $filename "r"]
-    while {[gets $filehandle line] != -1} {
+    while { [gets $filehandle line] != -1 } {
         puts "Read: $line"
     }
     close $filehandle
-    
+
     # File operations
-    if {[file exists $filename]} {
+    if { [file exists $filename] } {
         puts "File size: [file size $filename] bytes"
         puts "File modified: [clock format [file mtime $filename]]"
     }

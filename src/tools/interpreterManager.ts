@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -85,9 +86,10 @@ export class TclInterpreterManager {
     }
 
     private async discoverTclKitInterpreters(): Promise<void> {
+        const homeDir = os.homedir();
         const tclkitPaths = [
-            path.join(process.env.HOME || '', 'tclkit'),
-            path.join(process.env.HOME || '', '.tclkit'),
+            path.join(homeDir, 'tclkit'),
+            path.join(homeDir, '.tclkit'),
             '/usr/local/tclkit',
             '/opt/tclkit',
             'C:\\TclKit'
@@ -127,7 +129,7 @@ export class TclInterpreterManager {
             'C:\\ActiveTcl\\bin\\tclsh86.exe',
             '/opt/ActiveTcl/bin/tclsh',
             '/usr/local/ActiveTcl/bin/tclsh',
-            path.join(process.env.HOME || '', 'ActiveTcl', 'bin', 'tclsh')
+            path.join(os.homedir(), 'ActiveTcl', 'bin', 'tclsh')
         ];
 
         for (const tclPath of activeTclPaths) {

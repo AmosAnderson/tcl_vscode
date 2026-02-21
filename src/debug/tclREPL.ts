@@ -99,16 +99,16 @@ export class TclREPLCommands {
     public registerCommands(context: vscode.ExtensionContext): void {
         // Register REPL commands
         context.subscriptions.push(
-            vscode.commands.registerCommand('tcl.startREPL', () => {
-                this._replProvider.startREPL();
+            vscode.commands.registerCommand('tcl.startREPL', async () => {
+                await this._replProvider.startREPL();
             }),
 
-            vscode.commands.registerCommand('tcl.evaluateSelection', () => {
-                this._replProvider.evaluateSelection();
+            vscode.commands.registerCommand('tcl.evaluateSelection', async () => {
+                await this._replProvider.evaluateSelection();
             }),
 
-            vscode.commands.registerCommand('tcl.runCurrentFile', () => {
-                this._replProvider.runCurrentFile();
+            vscode.commands.registerCommand('tcl.runCurrentFile', async () => {
+                await this._replProvider.runCurrentFile();
             })
         );
 

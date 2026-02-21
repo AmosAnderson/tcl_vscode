@@ -30,7 +30,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
         }
 
         // Check if it's a built-in TCL command being used as a command
-        if (this.isBuiltinCommandInContext(document, position, oldName)) {
+        if (this.isBuiltinCommandInContext(document, wordRange.start, oldName)) {
             throw new Error(`Cannot rename built-in TCL command '${oldName}'`);
         }
 
@@ -40,7 +40,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
         }
 
         // Determine the type of symbol being renamed
-        const symbolType = await this.getSymbolType(document, position, oldName);
+        const symbolType = await this.getSymbolType(document, wordRange.start, oldName);
         
         if (!symbolType) {
             throw new Error('Cannot determine symbol type for renaming');
@@ -83,7 +83,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
         }
 
         // Check if it's a built-in TCL command being used as a command
-        if (this.isBuiltinCommandInContext(document, position, word)) {
+        if (this.isBuiltinCommandInContext(document, wordRange.start, word)) {
             throw new Error(`Cannot rename built-in TCL command '${word}'`);
         }
 
@@ -107,16 +107,16 @@ export class TclRenameProvider implements vscode.RenameProvider {
         return TCL_BUILTIN_COMMANDS.some(cmd => cmd.name === name);
     }
 
-    private isBuiltinCommandInContext(document: vscode.TextDocument, position: vscode.Position, word: string): boolean {
+    private isBuiltinCommandInContext(document: vscode.TextDocument, wordStartPosition: vscode.Position, word: string): boolean {
         // First check if it's a built-in command
         if (!this.isBuiltinCommand(word)) {
             return false;
         }
 
         // Check the context to see if it's being used as a command
-        const line = document.lineAt(position.line);
+        const line = document.lineAt(wordStartPosition.line);
         const lineText = line.text;
-        const wordStart = position.character;
+        const wordStart = wordStartPosition.character;
         const wordEnd = wordStart + word.length;
         
         // Don't prevent renaming if it's a variable reference (preceded by $)
@@ -139,7 +139,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
         const beforeWord = lineText.substring(0, wordStart).trim();
         
         // Command at start of line or after command separator
-        if (beforeWord === '' || beforeWord.endsWith(';') || beforeWord.endsWith('\n')) {
+        if (beforeWord === '' || beforeWord.endsWith(';')) {
             return true;
         }
 
@@ -180,13 +180,13 @@ export class TclRenameProvider implements vscode.RenameProvider {
 
     private async getSymbolType(
         document: vscode.TextDocument,
-        position: vscode.Position,
+        wordStartPosition: vscode.Position,
         symbolName: string
     ): Promise<string | null> {
         
-        const line = document.lineAt(position.line);
+        const line = document.lineAt(wordStartPosition.line);
         const lineText = line.text;
-        const wordStart = position.character - symbolName.length;
+        const wordStart = wordStartPosition.character;
         const escaped = this.escapeRegex(symbolName);
 
         // Check context to determine symbol type

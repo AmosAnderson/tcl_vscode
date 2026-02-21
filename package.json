@@ -2,10 +2,10 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.4.2",
+  "version": "0.5.2",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
-    "vscode": "^1.106.1"
+    "vscode": "^1.109.0"
   },
   "categories": [
     "Programming Languages",
@@ -284,24 +284,24 @@
     "pretest": "npm run compile",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "package": "vsce package"
+    "package": "vsce package --allow-package-all-secrets --allow-package-env-file"
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.68.0",
     "@vscode/debugprotocol": "^1.68.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.39.1",
+    "@eslint/eslintrc": "^3.3.3",
+    "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^25.0.3",
-    "@types/vscode": "^1.106.1",
-    "@typescript-eslint/eslint-plugin": "^8.47.0",
-    "@typescript-eslint/parser": "^8.47.0",
+    "@types/node": "^25.2.2",
+    "@types/vscode": "^1.109.0",
+    "@typescript-eslint/eslint-plugin": "^8.55.0",
+    "@typescript-eslint/parser": "^8.55.0",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
-    "eslint": "^9.39.1",
-    "glob": "^13.0.0",
+    "eslint": "^10.0.0",
+    "glob": "^13.0.1",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3"
   }

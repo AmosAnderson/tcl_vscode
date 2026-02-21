@@ -51,17 +51,16 @@ export class TclDiagnosticProvider {
         let braceStack: number[] = [];
         let bracketStack: number[] = [];
         let inString = false;
-        let stringChar = '';
 
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
-            
+
             for (let charPos = 0; charPos < line.length; charPos++) {
                 const char = line[charPos];
                 const prevChar = charPos > 0 ? line[charPos - 1] : '';
 
-                // Handle string literals (check for unescaped quotes)
-                if ((char === '"' || char === "'")) {
+                // Handle double-quoted string literals (TCL only uses " for quoting, not ')
+                if (char === '"') {
                     // Count consecutive backslashes before this character
                     let backslashCount = 0;
                     let checkPos = charPos - 1;
@@ -73,13 +72,7 @@ export class TclDiagnosticProvider {
                     const isEscaped = backslashCount % 2 === 1;
 
                     if (!isEscaped) {
-                        if (!inString) {
-                            inString = true;
-                            stringChar = char;
-                        } else if (char === stringChar) {
-                            inString = false;
-                            stringChar = '';
-                        }
+                        inString = !inString;
                     }
                     continue;
                 }
@@ -113,12 +106,11 @@ export class TclDiagnosticProvider {
                 }
             }
 
-            // Check for unclosed strings at end of line
-            if (inString && stringChar === '"') {
+            // Check for unclosed double-quoted strings at end of line
+            if (inString) {
                 this.addDiagnostic(diagnostics, lineNum, 0, line.length,
                     'Unclosed string literal', vscode.DiagnosticSeverity.Error);
                 inString = false;
-                stringChar = '';
             }
         }
 
@@ -234,7 +226,7 @@ exit 0
                 } catch (error: any) {
                     // tclsh returns non-zero exit code for syntax errors
                     if (error.stderr) {
-                        this.parseTclshErrors(error.stderr, diagnostics);
+                        this.parseTclshErrors(error.stderr, document, diagnostics);
                     }
                 } finally {
                     // Clean up check script
@@ -278,17 +270,19 @@ exit 0
         return null;
     }
 
-    private parseTclshErrors(stderr: string, diagnostics: vscode.Diagnostic[]): void {
+    private parseTclshErrors(stderr: string, document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): void {
         const lines = stderr.split('\n');
-        
+
         for (const line of lines) {
             // Parse tclsh error format: "line X: error message"
             const match = line.match(/line (\d+): (.+)/);
             if (match) {
                 const lineNum = parseInt(match[1]) - 1; // Convert to 0-based
                 const message = match[2];
-                
-                this.addDiagnostic(diagnostics, lineNum, 0, 100,
+                const lineLength = lineNum < document.lineCount
+                    ? document.lineAt(lineNum).text.length
+                    : 0;
+                this.addDiagnostic(diagnostics, lineNum, 0, lineLength,
                     message, vscode.DiagnosticSeverity.Error);
             }
         }

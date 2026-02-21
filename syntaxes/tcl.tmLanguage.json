@@ -12,6 +12,9 @@
             "include": "#numbers"
         },
         {
+            "include": "#boolean-constants"
+        },
+        {
             "include": "#variables"
         },
         {
@@ -50,7 +53,11 @@
             "patterns": [
                 {
                     "name": "comment.line.number-sign.tcl",
-                    "match": "(?<=^|\\s|;)#.*$"
+                    "match": "^\\s*#.*$"
+                },
+                {
+                    "name": "comment.line.number-sign.tcl",
+                    "match": "(?<=;)\\s*#.*$"
                 }
             ]
         },
@@ -59,7 +66,7 @@
                 {
                     "name": "string.quoted.double.tcl",
                     "begin": "(?<!\\\\)\"",
-                    "end": "(?<!\\\\)\"",
+                    "end": "\"",
                     "patterns": [
                         {
                             "name": "constant.character.escape.tcl",
@@ -113,6 +120,14 @@
                 }
             ]
         },
+        "boolean-constants": {
+            "patterns": [
+                {
+                    "name": "constant.language.boolean.tcl",
+                    "match": "\\b(true|false|yes|no|on|off)\\b"
+                }
+            ]
+        },
         "variables": {
             "patterns": [
                 {
@@ -133,6 +148,17 @@
             "patterns": [
                 {
                     "match": "\\b(proc)\\s+([a-zA-Z_:][a-zA-Z0-9_:]*)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.tcl"
+                        },
+                        "2": {
+                            "name": "entity.name.function.tcl"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b(method)\\s+([a-zA-Z_:][a-zA-Z0-9_:]*)",
                     "captures": {
                         "1": {
                             "name": "keyword.other.tcl"
@@ -182,7 +208,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.tcl",
-                    "match": "\\b(if|then|else|elseif|for|foreach|while|switch|case|default|break|continue|return|exit|catch|try|throw|finally)\\b"
+                    "match": "\\b(if|then|else|elseif|for|foreach|while|switch|case|default|break|continue|return|exit|catch|try|throw|finally|constructor|destructor)\\b"
                 }
             ]
         },
@@ -190,11 +216,11 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.tcl",
-                    "match": "\\b(set|puts|gets|open|close|read|write|seek|tell|eof|flush|glob|file|cd|pwd|exec|pid|clock|time|after|update|vwait|incr|expr|eval|source|load|unload|rename|unknown|info|interp|uplevel|upvar|global|variable|unset|trace|history|encoding|binary|format|scan|subst|error)\\b"
+                    "match": "\\b(set|puts|gets|open|close|read|write|seek|tell|eof|flush|glob|file|cd|pwd|exec|pid|clock|time|after|update|vwait|incr|expr|eval|source|load|unload|rename|unknown|info|interp|uplevel|upvar|global|variable|unset|trace|history|encoding|binary|format|scan|subst|error|apply|chan|socket|tailcall|coroutine|yield|yieldto)\\b"
                 },
                 {
                     "name": "support.function.list.tcl",
-                    "match": "\\b(list|lindex|linsert|llength|lappend|lrange|lreplace|lsearch|lsort|lset|lmap|lrepeat|lreverse|join|split|concat)\\b"
+                    "match": "\\b(list|lindex|linsert|llength|lappend|lrange|lreplace|lsearch|lsort|lset|lmap|lrepeat|lreverse|lassign|join|split|concat)\\b"
                 },
                 {
                     "name": "support.function.string.tcl",
@@ -237,10 +263,6 @@
                     "match": "\\b(eq|ne|in|ni)\\b"
                 },
                 {
-                    "name": "keyword.operator.arithmetic.tcl",
-                    "match": "[+\\-*/%]"
-                },
-                {
                     "name": "keyword.operator.comparison.tcl",
                     "match": "(==|!=|<=|>=|<|>)"
                 },
@@ -251,6 +273,10 @@
                 {
                     "name": "keyword.operator.bitwise.tcl",
                     "match": "(&|\\||\\^|~|<<|>>)"
+                },
+                {
+                    "name": "keyword.operator.arithmetic.tcl",
+                    "match": "\\*\\*"
                 }
             ]
         },

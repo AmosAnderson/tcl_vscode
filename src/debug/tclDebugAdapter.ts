@@ -22,6 +22,7 @@ export class TclDebugSession extends DebugSession {
     private _currentFile = '';
     private _isRunning = false;
     private _callStack: StackFrame[] = [];
+    private _debugScriptPath: string | null = null;
 
     public constructor() {
         super();
@@ -77,6 +78,7 @@ export class TclDebugSession extends DebugSession {
 
             // Create a wrapper script that enables debugging
             const debugScript = this.createDebugScript(args.program);
+            this._debugScriptPath = debugScript;
             
             // Launch TCL interpreter with debug wrapper
             const tclPath = args.tclPath || 'tclsh';
@@ -206,11 +208,11 @@ exit 0
     }
 
     protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
-        const path = args.source.path as string;
+        const filePath = args.source.path as string;
         const clientLines = args.lines || [];
 
         // Clear existing breakpoints for this file
-        this._breakpoints.delete(path);
+        this._breakpoints.delete(filePath);
 
         // Create breakpoint objects
         // Note: In this simplified implementation, breakpoints are acknowledged but not fully functional
@@ -222,7 +224,7 @@ exit 0
         });
 
         // Store breakpoints
-        this._breakpoints.set(path, breakpoints);
+        this._breakpoints.set(filePath, breakpoints);
 
         response.body = {
             breakpoints: breakpoints
@@ -342,7 +344,9 @@ exit 0
     protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
         if (this._tclProcess && this._tclProcess.stdin) {
             // Send the expression to TCL for evaluation
-            this._tclProcess.stdin.write(`puts "EVAL:[catch {${args.expression}} result]; puts "RESULT:$result"\n`);
+            this._tclProcess.stdin.write(
+                `if {[catch {${args.expression}} result]} {puts "ERROR:$result"} else {puts "OUTPUT:$result"}\n`
+            );
         }
         
         // For now, return a simple response
@@ -353,11 +357,19 @@ exit 0
         this.sendResponse(response);
     }
 
+    private cleanupDebugScript(): void {
+        if (this._debugScriptPath) {
+            try { fs.unlinkSync(this._debugScriptPath); } catch (_) { /* ignore */ }
+            this._debugScriptPath = null;
+        }
+    }
+
     protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments): void {
         if (this._tclProcess) {
             this._tclProcess.kill();
             this._tclProcess = null;
         }
+        this.cleanupDebugScript();
         this.sendResponse(response);
     }
 
@@ -366,6 +378,7 @@ exit 0
             this._tclProcess.kill();
             this._tclProcess = null;
         }
+        this.cleanupDebugScript();
         this.sendResponse(response);
     }
 }

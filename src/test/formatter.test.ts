@@ -154,3 +154,67 @@ suite('TCL Formatter Options', () => {
         assert.strictEqual(result, expected);
     });
 });
+
+suite('TCL Formatter Comment Handling', () => {
+    let formatter: TclFormatter;
+
+    setup(() => {
+        formatter = new TclFormatter();
+    });
+
+    test('Should not shift indentation due to opening brace in comment', () => {
+        const input = '# open brace {\nset x 5';
+        const expected = '# open brace {\nset x 5';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+
+    test('Should not shift indentation due to closing brace in comment', () => {
+        const input = 'proc foo {} {\n    puts "hi"\n    # closing } in comment\n}';
+        const expected = 'proc foo {} {\n    puts "hi"\n    # closing } in comment\n}';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+
+    test('Should not modify comment content', () => {
+        const input = '# if {$x > 0} { do something }';
+        const expected = '# if {$x > 0} { do something }';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+
+    test('Should indent comments at current block level', () => {
+        const input = 'proc foo {} {\n# a comment\nputs "hi"\n}';
+        const expected = 'proc foo {} {\n    # a comment\n    puts "hi"\n}';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+
+    test('Should not shift indentation due to brace in inline comment', () => {
+        const input = 'set x 5 ;# has { brace\nset y 6';
+        const expected = 'set x 5 ;# has { brace\nset y 6';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+});
+
+suite('TCL Formatter Inline Block Expansion', () => {
+    let formatter: TclFormatter;
+
+    setup(() => {
+        formatter = new TclFormatter();
+    });
+
+    test('Should expand inline while body to multi-line', () => {
+        const input = 'while {$i<10}{incr i}';
+        const expected = 'while { $i < 10 } {\n    incr i\n}';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+
+    test('Should expand inline foreach body to multi-line', () => {
+        const input = 'foreach item {a b c}{puts $item}';
+        const expected = 'foreach item {a b c} {\n    puts $item\n}';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+
+    test('Should expand inline for body to multi-line', () => {
+        const input = 'for {set i 0}{$i < 5}{incr i}{puts $i}';
+        const expected = 'for { set i 0 } { $i < 5 } { incr i } {\n    puts $i\n}';
+        assert.strictEqual(formatter.format(input), expected);
+    });
+});
