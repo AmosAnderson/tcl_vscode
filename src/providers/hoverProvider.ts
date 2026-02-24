@@ -74,15 +74,16 @@ export class TclHoverProvider implements vscode.HoverProvider {
         const text = document.getText();
         const lines = text.split('\n');
 
+        let lineOffset = 0;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            const procMatch = line.match(new RegExp(`\\bproc\\s+(${procName})\\s*\\{`, 'i'));
+            const procMatch = line.match(new RegExp(`\\bproc\\s+(${procName})\\s*\\{`));
 
             if (procMatch) {
                 const name = procMatch[1];
 
                 // Find the matching closing brace for arguments
-                const startIdx = text.indexOf(line) + line.indexOf('{');
+                const startIdx = lineOffset + line.indexOf('{');
                 const endIdx = this.findMatchingBrace(text, startIdx);
 
                 let args = '';
@@ -109,6 +110,8 @@ export class TclHoverProvider implements vscode.HoverProvider {
                     comment: comment.trim() || undefined
                 };
             }
+
+            lineOffset += line.length + 1; // +1 for the newline character
         }
 
         return null;
@@ -171,7 +174,7 @@ export class TclHoverProvider implements vscode.HoverProvider {
             const line = lines[i];
             
             // Check for set command
-            const setMatch = line.match(new RegExp(`\\bset\\s+(${varName})\\s+(.+)`, 'i'));
+            const setMatch = line.match(new RegExp(`\\bset\\s+(${varName})\\s+(.+)`));
             if (setMatch) {
                 const value = setMatch[2].trim();
                 return {
@@ -181,7 +184,7 @@ export class TclHoverProvider implements vscode.HoverProvider {
             }
             
             // Check for global command
-            const globalMatch = line.match(new RegExp(`\\bglobal\\s+.*\\b${varName}\\b`, 'i'));
+            const globalMatch = line.match(new RegExp(`\\bglobal\\s+.*\\b${varName}\\b`));
             if (globalMatch) {
                 return {
                     type: 'global variable'
@@ -189,7 +192,7 @@ export class TclHoverProvider implements vscode.HoverProvider {
             }
             
             // Check for variable command
-            const variableMatch = line.match(new RegExp(`\\bvariable\\s+(${varName})(?:\\s+(.+))?`, 'i'));
+            const variableMatch = line.match(new RegExp(`\\bvariable\\s+(${varName})(?:\\s+(.+))?`));
             if (variableMatch) {
                 const value = variableMatch[2]?.trim();
                 return {

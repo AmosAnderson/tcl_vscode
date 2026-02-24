@@ -232,20 +232,20 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
         returnValue: string | null;
     } {
         const parameters: string[] = [];
-        const returnValue: string | null = null;
+        let returnValue: string | null = null;
 
         // Find variables used in the code
         const variablePattern = /\$([a-zA-Z_][a-zA-Z0-9_]*)/g;
         const variables = new Set<string>();
         let match;
-        
+
         while ((match = variablePattern.exec(code)) !== null) {
             variables.add(match[1]);
         }
 
         // Check which variables are defined before the selection
         const textBeforeSelection = document.getText(new vscode.Range(0, 0, range.start.line, range.start.character));
-        
+
         for (const variable of variables) {
             const setPattern = new RegExp(`\\bset\\s+${variable}\\b`);
             if (setPattern.test(textBeforeSelection)) {
@@ -253,9 +253,18 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
             }
         }
 
-        // Check if the code contains a return statement or sets a variable that's used later
-        // This is a simplified analysis - a more sophisticated version would track data flow
-        
+        // Check if the code sets a variable that is used after the selection
+        const textAfterSelection = document.getText(new vscode.Range(range.end.line, range.end.character, document.lineCount - 1, 0));
+        const setInCode = /\bset\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+/g;
+        while ((match = setInCode.exec(code)) !== null) {
+            const varName = match[1];
+            const usedAfter = new RegExp(`\\$${varName}\\b`);
+            if (usedAfter.test(textAfterSelection)) {
+                returnValue = varName;
+                break;
+            }
+        }
+
         return { parameters, returnValue };
     }
 

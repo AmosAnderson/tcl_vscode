@@ -132,15 +132,15 @@ export class TclCodeActionProvider implements vscode.CodeActionProvider {
             );
             
             const edit = new vscode.WorkspaceEdit();
+            const indent = line.text.substring(0, line.firstNonWhitespaceCharacterIndex);
+            const statementText = line.text.substring(line.firstNonWhitespaceCharacterIndex);
             const lineRange = new vscode.Range(
-                range.start.line, line.firstNonWhitespaceCharacterIndex,
+                range.start.line, 0,
                 range.start.line, line.text.length
             );
-            
-            const indentedText = line.text.substring(0, line.firstNonWhitespaceCharacterIndex);
-            const statementText = line.text.substring(line.firstNonWhitespaceCharacterIndex);
-            const newText = `${indentedText}{\n${indentedText}    ${statementText}\n${indentedText}}`;
-            
+
+            const newText = `${indent}{\n${indent}    ${statementText}\n${indent}}`;
+
             edit.replace(document.uri, lineRange, newText);
             action.edit = edit;
             actions.push(action);

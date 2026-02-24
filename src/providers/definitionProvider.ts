@@ -14,20 +14,15 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
         const word = document.getText(wordRange);
         const line = document.lineAt(position.line).text;
 
-        // Check if we're on a procedure call
-        const procCallMatch = line.match(new RegExp(`\\b${word}\\b`));
-        if (procCallMatch) {
-            // First try to find in current document
-            const currentDocLocation = this.findProcedureInDocument(document, word);
-            if (currentDocLocation) {
-                return currentDocLocation;
-            }
+        // Try to find a procedure definition for this word
+        const currentDocLocation = this.findProcedureInDocument(document, word);
+        if (currentDocLocation) {
+            return currentDocLocation;
+        }
 
-            // Then search in workspace
-            const workspaceLocations = await this.findProcedureInWorkspace(word);
-            if (workspaceLocations.length > 0) {
-                return workspaceLocations;
-            }
+        const workspaceLocations = await this.findProcedureInWorkspace(word);
+        if (workspaceLocations.length > 0) {
+            return workspaceLocations;
         }
 
         // Check if we're on a namespace reference
@@ -66,14 +61,14 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
         const locations: vscode.Location[] = [];
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
         const name = this.escapeRegex(procName);
-        const procRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{[^}]*\\}\\s*\\{`, 'g');
 
         for (const file of files) {
             try {
                 const document = await vscode.workspace.openTextDocument(file);
                 const text = document.getText();
+                const procRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{[^}]*\\}\\s*\\{`, 'g');
                 let match;
-                
+
                 while ((match = procRegex.exec(text)) !== null) {
                     const position = document.positionAt(match.index);
                     const range = new vscode.Range(position, position);
