@@ -38,9 +38,9 @@ export async function activate(context: vscode.ExtensionContext) {
     const diagnosticProvider = new TclDiagnosticProvider();
     const codeActionProvider = new TclCodeActionProvider();
 
-    const validateDocument = (document: vscode.TextDocument) => {
+    const validateDocument = async (document: vscode.TextDocument) => {
         if (document.languageId === 'tcl') {
-            diagnosticProvider.provideDiagnostics(document);
+            await diagnosticProvider.provideDiagnostics(document);
         }
     };
 
