@@ -11,6 +11,7 @@ import { TclDebugAdapterDescriptorFactory, TclConfigurationProvider } from './de
 import { TclREPLCommands } from './debug/tclREPL';
 import { TclTestProvider } from './testing/testProvider';
 import { TclCoverageProvider } from './testing/coverageProvider';
+import { TclLintProvider } from './providers/lintProvider';
 import { TclRenameProvider } from './refactoring/renameProvider';
 import { TclExtractProvider } from './refactoring/extractProvider';
 import { TclInterpreterManager } from './tools/interpreterManager';
@@ -34,13 +35,15 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Register diagnostic and code action providers when needed
+    // Register diagnostic, lint, and code action providers when needed
     const diagnosticProvider = new TclDiagnosticProvider();
+    const lintProvider = new TclLintProvider();
     const codeActionProvider = new TclCodeActionProvider();
 
     const validateDocument = async (document: vscode.TextDocument) => {
         if (document.languageId === 'tcl') {
             await diagnosticProvider.provideDiagnostics(document);
+            lintProvider.lint(document);
         }
     };
 

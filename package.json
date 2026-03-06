@@ -2,7 +2,7 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
     "vscode": "^1.109.0"
@@ -116,6 +116,26 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically discover TCL packages in workspace"
+        },
+        "tcl.packages.installDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Default directory to install TCL packages to (must be on auto_path)"
+        },
+        "tcl.lint.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable TCL linting for style issues"
+        },
+        "tcl.lint.maxLineLength": {
+          "type": "number",
+          "default": 120,
+          "description": "Maximum line length before warning (0 to disable)"
+        },
+        "tcl.lint.exprBracing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Warn when expr arguments are not braced"
         }
       }
     },
@@ -209,6 +229,12 @@
         "title": "TCL: Run Build Task"
       }
     ],
+    "snippets": [
+      {
+        "language": "tcl",
+        "path": "./snippets/tcl.json"
+      }
+    ],
     "debuggers": [
       {
         "type": "tcl",
@@ -279,7 +305,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && npm run copy-scripts",
+    "copy-scripts": "node -e \"const fs=require('fs'),p=require('path');const s=p.join('src','debug','scripts'),d=p.join('out','debug','scripts');fs.mkdirSync(d,{recursive:true});fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)))\"",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
     "lint": "eslint src --ext ts",
@@ -291,17 +318,17 @@
     "@vscode/debugprotocol": "^1.68.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.3",
+    "@eslint/eslintrc": "^3.3.4",
     "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^25.2.2",
+    "@types/node": "^25.3.5",
     "@types/vscode": "^1.109.0",
-    "@typescript-eslint/eslint-plugin": "^8.55.0",
-    "@typescript-eslint/parser": "^8.55.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
-    "eslint": "^10.0.0",
-    "glob": "^13.0.1",
+    "eslint": "^10.0.2",
+    "glob": "^13.0.6",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3"
   }

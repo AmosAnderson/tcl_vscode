@@ -235,16 +235,33 @@ export class TclDependencyManager {
             return;
         }
 
-        // This is a placeholder for actual installation
-        // In a real implementation, this would download and install packages
+        let successCount = 0;
+        let failCount = 0;
+
         for (const item of selected) {
             this.outputChannel.appendLine(`Installing ${item.dependency.name} v${item.dependency.version}...`);
-            // await this.packageManager.installPackage(item.dependency.name);
+            const success = await this.packageManager.installPackage(
+                item.dependency.name,
+                item.dependency.version !== 'latest' ? item.dependency.version : undefined
+            );
+            if (success) {
+                item.dependency.status = 'available';
+                successCount++;
+            } else {
+                failCount++;
+            }
         }
 
-        vscode.window.showInformationMessage(
-            `Installation queued for ${selected.length} package(s). Check output for details.`
-        );
+        // Refresh dependency status
+        await this.checkDependencyStatus();
+
+        if (failCount === 0) {
+            vscode.window.showInformationMessage(`Successfully installed ${successCount} package(s).`);
+        } else {
+            vscode.window.showWarningMessage(
+                `Installed ${successCount} package(s), ${failCount} failed. Check output for details.`
+            );
+        }
     }
 
     public async updateDependencies(): Promise<void> {
@@ -272,14 +289,31 @@ export class TclDependencyManager {
             return;
         }
 
-        // Placeholder for update logic
+        let successCount = 0;
+        let failCount = 0;
+
         for (const item of selected) {
             this.outputChannel.appendLine(`Updating ${item.dependency.name}...`);
+            // Install without version to get latest
+            const success = await this.packageManager.installPackage(item.dependency.name);
+            if (success) {
+                item.dependency.status = 'available';
+                successCount++;
+            } else {
+                failCount++;
+            }
         }
 
-        vscode.window.showInformationMessage(
-            `Update queued for ${selected.length} package(s). Check output for details.`
-        );
+        // Refresh dependency status
+        await this.checkDependencyStatus();
+
+        if (failCount === 0) {
+            vscode.window.showInformationMessage(`Successfully updated ${successCount} package(s).`);
+        } else {
+            vscode.window.showWarningMessage(
+                `Updated ${successCount} package(s), ${failCount} failed. Check output for details.`
+            );
+        }
     }
 
     public async createDependencyReport(): Promise<void> {

@@ -1,0 +1,343 @@
+{
+  "Tk Button Widget": {
+    "prefix": "tkbutton",
+    "body": [
+      "button .${1:btn} -text \"${2:Click Me}\" -command {",
+      "\t${3:# action}",
+      "}",
+      "pack .${1:btn}"
+    ],
+    "description": "Create a Tk button widget"
+  },
+  "Tk Label Widget": {
+    "prefix": "tklabel",
+    "body": [
+      "label .${1:lbl} -text \"${2:Label Text}\"",
+      "pack .${1:lbl}"
+    ],
+    "description": "Create a Tk label widget"
+  },
+  "Tk Entry Widget": {
+    "prefix": "tkentry",
+    "body": [
+      "set ${1:entryVar} \"\"",
+      "entry .${2:ent} -textvariable ${1:entryVar} -width ${3:30}",
+      "pack .${2:ent}"
+    ],
+    "description": "Create a Tk entry widget with textvariable"
+  },
+  "Tk Frame": {
+    "prefix": "tkframe",
+    "body": [
+      "frame .${1:frm} -borderwidth ${2:2} -relief ${3|groove,raised,sunken,flat,ridge|}",
+      "pack .${1:frm} -fill both -expand true",
+      "",
+      "# Add widgets inside the frame",
+      "${0}"
+    ],
+    "description": "Create a Tk frame container"
+  },
+  "Tk Canvas": {
+    "prefix": "tkcanvas",
+    "body": [
+      "canvas .${1:cnv} -width ${2:400} -height ${3:300} -background ${4:white}",
+      "pack .${1:cnv}",
+      "",
+      "# Draw on canvas",
+      ".${1:cnv} create ${5|rectangle,oval,line,text|} ${6:10 10 100 100} ${0}"
+    ],
+    "description": "Create a Tk canvas widget"
+  },
+  "Tk Listbox with Scrollbar": {
+    "prefix": "tklistbox",
+    "body": [
+      "frame .${1:lbFrame}",
+      "listbox .${1:lbFrame}.lb -yscrollcommand \".${1:lbFrame}.sb set\" -width ${2:30} -height ${3:10}",
+      "scrollbar .${1:lbFrame}.sb -command \".${1:lbFrame}.lb yview\"",
+      "pack .${1:lbFrame}.lb -side left -fill both -expand true",
+      "pack .${1:lbFrame}.sb -side right -fill y",
+      "pack .${1:lbFrame} -fill both -expand true",
+      "",
+      "# Insert items",
+      ".${1:lbFrame}.lb insert end \"${4:Item 1}\"",
+      "${0}"
+    ],
+    "description": "Create a Tk listbox with scrollbar"
+  },
+  "Tk Menu Bar": {
+    "prefix": "tkmenu",
+    "body": [
+      "menu .menubar",
+      ". configure -menu .menubar",
+      "",
+      "menu .menubar.${1:file} -tearoff 0",
+      ".menubar add cascade -label \"${2:File}\" -menu .menubar.${1:file}",
+      ".menubar.${1:file} add command -label \"${3:Open}\" -command { ${4:# open action} }",
+      ".menubar.${1:file} add separator",
+      ".menubar.${1:file} add command -label \"Exit\" -command exit",
+      "${0}"
+    ],
+    "description": "Create a Tk menu bar with cascading menu"
+  },
+  "Tk Dialog": {
+    "prefix": "tkdialog",
+    "body": [
+      "proc ${1:showDialog} {} {",
+      "\tset dlg [toplevel .${2:dlg}]",
+      "\twm title \\$dlg \"${3:Dialog Title}\"",
+      "\twm transient \\$dlg .",
+      "\twm resizable \\$dlg 0 0",
+      "",
+      "\tlabel \\$dlg.msg -text \"${4:Dialog message}\"",
+      "\tpack \\$dlg.msg -padx 20 -pady 10",
+      "",
+      "\tframe \\$dlg.buttons",
+      "\tbutton \\$dlg.buttons.ok -text \"OK\" -command [list destroy \\$dlg]",
+      "\tbutton \\$dlg.buttons.cancel -text \"Cancel\" -command [list destroy \\$dlg]",
+      "\tpack \\$dlg.buttons.ok \\$dlg.buttons.cancel -side left -padx 5",
+      "\tpack \\$dlg.buttons -pady 10",
+      "",
+      "\tgrab set \\$dlg",
+      "\ttkwait window \\$dlg",
+      "}"
+    ],
+    "description": "Create a modal Tk dialog"
+  },
+  "Tk Grid Layout": {
+    "prefix": "tkgrid",
+    "body": [
+      "grid ${1:.widget1} -row ${2:0} -column ${3:0} -sticky ${4|nsew,ns,ew,n,s,e,w|}",
+      "grid ${5:.widget2} -row ${6:0} -column ${7:1} -sticky ${8|nsew,ns,ew,n,s,e,w|}",
+      "",
+      "grid columnconfigure . ${3:0} -weight 1",
+      "grid rowconfigure . ${2:0} -weight 1",
+      "${0}"
+    ],
+    "description": "Tk grid geometry layout"
+  },
+  "Tk Pack Layout": {
+    "prefix": "tkpack",
+    "body": [
+      "pack ${1:.widget} -side ${2|top,bottom,left,right|} -fill ${3|both,x,y,none|} -expand ${4|true,false|} -padx ${5:5} -pady ${6:5}"
+    ],
+    "description": "Tk pack geometry manager"
+  },
+  "Tk Event Binding": {
+    "prefix": "tkbind",
+    "body": [
+      "bind ${1:.widget} <${2|Button-1,Double-Button-1,Button-3,Key-Return,Key-Escape,FocusIn,FocusOut,Enter,Leave,Configure|}> {",
+      "\t${3:# event handler}",
+      "}"
+    ],
+    "description": "Bind an event to a Tk widget"
+  },
+  "Expect Spawn": {
+    "prefix": "expectspawn",
+    "body": [
+      "package require Expect",
+      "",
+      "set timeout ${1:30}",
+      "spawn ${2:command args}",
+      "",
+      "expect {",
+      "\t\"${3:expected pattern}\" {",
+      "\t\tsend \"${4:response}\\r\"",
+      "\t}",
+      "\ttimeout {",
+      "\t\tputs \"Timed out\"",
+      "\t\texit 1",
+      "\t}",
+      "\teof {",
+      "\t\tputs \"Connection closed\"",
+      "\t}",
+      "}",
+      "${0}"
+    ],
+    "description": "Expect spawn with basic interaction"
+  },
+  "Expect Send/Expect": {
+    "prefix": "expectsend",
+    "body": [
+      "expect \"${1:prompt}\"",
+      "send \"${2:command}\\r\"",
+      "${0}"
+    ],
+    "description": "Expect send/expect interaction pair"
+  },
+  "Expect Timeout Handling": {
+    "prefix": "expecttimeout",
+    "body": [
+      "set timeout ${1:30}",
+      "expect {",
+      "\t\"${2:success pattern}\" {",
+      "\t\t${3:# success action}",
+      "\t}",
+      "\t\"${4:error pattern}\" {",
+      "\t\tputs stderr \"Error encountered\"",
+      "\t\texit 1",
+      "\t}",
+      "\ttimeout {",
+      "\t\tputs stderr \"Operation timed out after ${1:30}s\"",
+      "\t\texit 1",
+      "\t}",
+      "\teof {",
+      "\t\tputs stderr \"Unexpected end of connection\"",
+      "\t\texit 1",
+      "\t}",
+      "}"
+    ],
+    "description": "Expect with comprehensive timeout and error handling"
+  },
+  "Expect SSH Login": {
+    "prefix": "expectssh",
+    "body": [
+      "package require Expect",
+      "",
+      "set host \"${1:hostname}\"",
+      "set user \"${2:username}\"",
+      "set pass \"${3:password}\"",
+      "set timeout 30",
+      "",
+      "spawn ssh \\$user@\\$host",
+      "",
+      "expect {",
+      "\t\"yes/no\" {",
+      "\t\tsend \"yes\\r\"",
+      "\t\texp_continue",
+      "\t}",
+      "\t\"password:\" {",
+      "\t\tsend \"\\$pass\\r\"",
+      "\t}",
+      "\ttimeout {",
+      "\t\tputs \"Connection timed out\"",
+      "\t\texit 1",
+      "\t}",
+      "}",
+      "",
+      "expect \"\\\\\\$\"",
+      "send \"${4:command}\\r\"",
+      "expect \"\\\\\\$\"",
+      "send \"exit\\r\"",
+      "expect eof"
+    ],
+    "description": "Expect SSH login automation"
+  },
+  "Expect Log File": {
+    "prefix": "expectlog",
+    "body": [
+      "log_file -noappend ${1:expect.log}",
+      "log_user ${2|1,0|}",
+      "${0}"
+    ],
+    "description": "Set up Expect log file"
+  },
+  "Try/Catch/Finally": {
+    "prefix": "trycatch",
+    "body": [
+      "try {",
+      "\t${1:# code that may fail}",
+      "} on error {msg opts} {",
+      "\tputs stderr \"Error: \\$msg\"",
+      "\t${2:# error handling}",
+      "} finally {",
+      "\t${3:# cleanup}",
+      "}"
+    ],
+    "description": "TCL 8.6+ try/catch/finally block"
+  },
+  "Coroutine": {
+    "prefix": "coroutine",
+    "body": [
+      "proc ${1:generator} {} {",
+      "\tyield",
+      "\t${2:# coroutine body}",
+      "\twhile {1} {",
+      "\t\tyield ${3:\\$value}",
+      "\t}",
+      "}",
+      "",
+      "coroutine ${4:coro} ${1:generator}"
+    ],
+    "description": "TCL 8.6+ coroutine definition"
+  },
+  "TclOO Class": {
+    "prefix": "oo_class",
+    "body": [
+      "oo::class create ${1:ClassName} {",
+      "\tvariable ${2:field1}",
+      "",
+      "\tconstructor {${3:args}} {",
+      "\t\tset ${2:field1} ${4:\\$args}",
+      "\t}",
+      "",
+      "\tmethod ${5:methodName} {${6:params}} {",
+      "\t\t${7:# method body}",
+      "\t}",
+      "",
+      "\tdestructor {",
+      "\t\t${8:# cleanup}",
+      "\t}",
+      "}"
+    ],
+    "description": "TclOO class definition (8.6+)"
+  },
+  "Dict Iteration": {
+    "prefix": "dict_iterate",
+    "body": [
+      "dict for {${1:key} ${2:value}} ${3:\\$dictVar} {",
+      "\tputs \"\\$${1:key} = \\$${2:value}\"",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Iterate over a TCL dictionary"
+  },
+  "File Read": {
+    "prefix": "file_read",
+    "body": [
+      "set ${1:fd} [open \"${2:filename}\" r]",
+      "set ${3:content} [read \\$${1:fd}]",
+      "close \\$${1:fd}",
+      "${0}"
+    ],
+    "description": "Read entire file contents"
+  },
+  "File Write": {
+    "prefix": "file_write",
+    "body": [
+      "set ${1:fd} [open \"${2:filename}\" w]",
+      "puts \\$${1:fd} \"${3:content}\"",
+      "close \\$${1:fd}",
+      "${0}"
+    ],
+    "description": "Write to a file"
+  },
+  "Package Provide": {
+    "prefix": "package_provide",
+    "body": [
+      "package provide ${1:packageName} ${2:1.0}",
+      "",
+      "namespace eval ::${1:packageName} {",
+      "\tnamespace export *",
+      "",
+      "\tproc ${3:init} {} {",
+      "\t\t${0}",
+      "\t}",
+      "}"
+    ],
+    "description": "Package provide boilerplate"
+  },
+  "Test Case": {
+    "prefix": "test_case",
+    "body": [
+      "package require tcltest",
+      "namespace import ::tcltest::*",
+      "",
+      "test ${1:testName}-${2:1.0} {${3:Test description}} -body {",
+      "\t${4:# test body}",
+      "} -result {${5:expected result}}",
+      "",
+      "cleanupTests"
+    ],
+    "description": "tcltest test case boilerplate"
+  }
+}

@@ -18,6 +18,11 @@ export class TclCodeActionProvider implements vscode.CodeActionProvider {
                 if (quickFix) {
                     actions.push(quickFix);
                 }
+            } else if (diagnostic.source === 'tcl-lint') {
+                const quickFix = this.createLintQuickFix(document, diagnostic);
+                if (quickFix) {
+                    actions.push(quickFix);
+                }
             }
         }
 
@@ -113,6 +118,63 @@ export class TclCodeActionProvider implements vscode.CodeActionProvider {
             action.edit = edit;
             action.diagnostics = [diagnostic];
             return action;
+        }
+
+        return null;
+    }
+
+    private createLintQuickFix(document: vscode.TextDocument, diagnostic: vscode.Diagnostic): vscode.CodeAction | null {
+        if (diagnostic.code === 'tcl-lint-expr-bracing') {
+            const line = document.lineAt(diagnostic.range.start.line);
+            const text = line.text;
+
+            // Find the expr command and wrap its arguments in braces
+            const exprMatch = text.match(/\bexpr\s+(.+)/);
+            if (exprMatch) {
+                const exprStart = text.indexOf(exprMatch[0]);
+                const argsStart = exprStart + 'expr '.length;
+                // Find where the expr arguments end (end of line or before ; or ])
+                let argsText = exprMatch[1];
+                // Strip trailing ] or ; context
+                argsText = argsText.replace(/\s*[\];].*$/, '');
+
+                const action = new vscode.CodeAction(
+                    'Brace the expr argument',
+                    vscode.CodeActionKind.QuickFix
+                );
+                const edit = new vscode.WorkspaceEdit();
+                const replaceRange = new vscode.Range(
+                    diagnostic.range.start.line, argsStart,
+                    diagnostic.range.start.line, argsStart + argsText.length
+                );
+                edit.replace(document.uri, replaceRange, `{${argsText}}`);
+                action.edit = edit;
+                action.diagnostics = [diagnostic];
+                return action;
+            }
+        }
+
+        if (diagnostic.code === 'tcl-lint-catch-no-var') {
+            const line = document.lineAt(diagnostic.range.start.line);
+            const text = line.text;
+
+            // Add a result variable to catch
+            const catchMatch = text.match(/(\bcatch\s+\{[^}]*\})\s*$/);
+            if (catchMatch) {
+                const action = new vscode.CodeAction(
+                    'Add result variable to catch',
+                    vscode.CodeActionKind.QuickFix
+                );
+                const edit = new vscode.WorkspaceEdit();
+                const insertPos = new vscode.Position(
+                    diagnostic.range.start.line,
+                    text.indexOf(catchMatch[0]) + catchMatch[1].length
+                );
+                edit.insert(document.uri, insertPos, ' result');
+                action.edit = edit;
+                action.diagnostics = [diagnostic];
+                return action;
+            }
         }
 
         return null;
