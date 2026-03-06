@@ -5,14 +5,14 @@ Core TypeScript lives in `src/`, where `extension.ts` wires formatter, provider,
 
 ## Build, Test, and Development Commands
 - `npm install`: Install dependencies before any build.
-- `npm run compile`: TypeScript build via `tsc -p ./`; run before shipping or tests.
+- `npm run compile`: TypeScript build via `tsc -p ./` followed by `copy-scripts` (copies `.tcl` debug server files to `out/`); run before shipping or tests.
 - `npm run watch`: Persistent compiler for fast feedback.
 - `npm run lint`: ESLint (`eslint.config.cjs`) on `src/**/*.ts`.
 - `npm test`: Invokes `pretest` (compile) and VS Code integration tests via `out/test/runTest.js`.
 - `npm run package`: Wraps `vsce package` to emit a `.vsix`; bump versions first.
 
 ## Architecture & Activation Flow
-Version 0.4.2 targets VS Code 1.106+ and follows a layered architecture: data → providers → feature modules → entry point. Activation relies solely on built-in providers, so new language features should continue to integrate with those layers. Interpreter, package, dependency, template, and task managers boot lazily via `ensurePhase6Initialized()`; reuse that helper when adding commands to keep startup lean.
+Version 0.6.0 targets VS Code 1.109+ and follows a layered architecture: data → providers → feature modules → entry point. Activation relies solely on built-in providers, so new language features should continue to integrate with those layers. Interpreter, package, dependency, template, and task managers boot lazily via `ensurePhase6Initialized()`; reuse that helper when adding commands to keep startup lean. The debug adapter communicates with a TCL-side debug server (`src/debug/scripts/debugServer.tcl`) over TCP sockets for breakpoints, stepping, and variable inspection. A separate lint provider (`src/providers/lintProvider.ts`) handles style checks independently from the structural diagnostic provider.
 
 ## Coding Style & Naming Conventions
 Use 4-space indentation, `camelCase` for functions/variables, `PascalCase` for classes/providers, and kebab-case branches (`feat/language-server`). Keep provider registration centralized in `extension.ts`, prefer early returns, and rely on `eslint.config.cjs` + TypeScript ESLint rules for formatting, imports, and VS Code API usage.

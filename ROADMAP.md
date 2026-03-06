@@ -28,29 +28,33 @@ This document tracks the major milestones for the TCL language extension. It mir
 - Quick fixes for common issues surfaced through the diagnostic provider
 
 ### Phase 5 – Testing & Debugging
-- Debug adapter with launch configurations for Tcl scripts (basic execution and output capture)
+- Debug adapter with full breakpoints, stepping (step in/out/over), call stack, variable inspection, and expression evaluation via TCP socket protocol and source-level instrumentation
 - REPL commands (`tcl.startREPL`, `tcl.evaluateSelection`, etc.)
 - Integrated test explorer wiring with coverage commands (`tcl.generateCoverage`, `tcl.clearCoverage`)
 - Refactoring helpers (rename, extract procedure/variable, inline variable)
-- Note: Full debugging with stepping and variable inspection is planned for a future release
 
 ### Phase 6 – Tooling Integration
 - Interpreter discovery (system, TclKit, ActiveTcl, custom)
-- Dependency manager, package tasks, and project templates
+- Dependency manager with real package installation (teacup + manual fallback)
+- Package tasks and project templates
 - Task provider that surfaces common Tcl build scripts
+
+### Phase 7 – Linting & Snippets
+- Lint provider with 6 style rules (expr bracing, switch default, catch variable, line length, deprecated commands, global variable shorthand)
+- Quick fixes for fixable lint warnings
+- 25+ snippets for Tk widgets, Expect automation, TclOO, and common patterns
 
 ## 🔜 Planned Enhancements
 
 ### High Priority
-- **Full debugging support** with breakpoint pausing, stepping (step in/out/over), call stack inspection, and live variable viewing
 - **Enhanced formatter** for better handling of complex nested structures and edge cases
 - **Improved semantic analysis** for rename and refactoring operations
 
 ### Future Features
-- **Linting providers** that surface style issues beyond structural syntax checks
 - **Workspace-wide symbol indexing** optimization for very large codebases
 - **Additional refactorings**, including inline procedure and namespace extraction helpers
-- **Snippets catalogue** for popular Tk widget patterns and Expect automation templates
 - **Command palette utilities** for quickly running Tcl scripts with different interpreters
+- **Conditional breakpoints** and **logpoints** in the debug adapter
+- **Array variable expansion** in the debug variables panel
 
 Have suggestions or feature requests? Please open an issue or contribute via pull requests—community input drives the roadmap.

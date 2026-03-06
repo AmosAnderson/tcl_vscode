@@ -24,9 +24,9 @@ We are committed to providing a welcoming and inclusive environment. Please:
 ## Getting Started
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- npm (v7 or higher)
-- VS Code (latest stable version)
+- Node.js (v18 LTS or higher)
+- npm (v9 or higher)
+- VS Code 1.109.0 or newer
 - Git
 - TCL interpreter (for testing)
 
@@ -78,15 +78,19 @@ tcl-vscode/
 │   ├── debug/             # Debugging support
 │   │   ├── debugAdapterFactory.ts
 │   │   ├── tclDebugAdapter.ts
-│   │   └── tclREPL.ts
+│   │   ├── tclREPL.ts
+│   │   └── scripts/
+│   │       └── debugServer.tcl  # TCL-side debug server
 │   ├── formatter/         # Code formatting
 │   │   ├── formattingProvider.ts
 │   │   └── tclFormatter.ts
 │   ├── providers/         # Language features
+│   │   ├── codeActionProvider.ts
 │   │   ├── completionProvider.ts
 │   │   ├── definitionProvider.ts
 │   │   ├── diagnosticProvider.ts
 │   │   ├── hoverProvider.ts
+│   │   ├── lintProvider.ts
 │   │   └── symbolProvider.ts
 │   ├── refactoring/       # Refactoring features
 │   │   ├── extractProvider.ts
@@ -95,9 +99,12 @@ tcl-vscode/
 │   │   ├── coverageProvider.ts
 │   │   └── testProvider.ts
 │   └── tools/             # External tools
+│       ├── dependencyManager.ts
 │       ├── interpreterManager.ts
 │       ├── packageManager.ts
 │       └── projectTemplates.ts
+├── snippets/              # VS Code snippet definitions
+│   └── tcl.json
 ├── syntaxes/              # Syntax definitions
 │   └── tcl.tmLanguage.json
 ├── docs/                  # Documentation
@@ -284,12 +291,6 @@ tcl-vscode/
 ```bash
 # Run all tests
 npm test
-
-# Run with coverage
-npm run test:coverage
-
-# Watch mode
-npm run test:watch
 ```
 
 ### Writing Tests

@@ -2,6 +2,25 @@
 
 All notable changes to the "TCL Syntax" extension will be documented in this file.
 
+## [0.6.0] - 2026-03-05
+
+### Added
+- **Debugging**: Full debug adapter with breakpoints, stepping (step in/out/over), call stack inspection, variable viewing, expression evaluation, and set-variable support via TCP socket protocol and source-level instrumentation
+- **Linting**: New `TclLintProvider` with 6 lint rules: unbraced `expr` arguments, missing `switch` default clause, `catch` without result variable, line length limits, deprecated commands, and repeated `$::varName` shorthand in procs
+- **Quick Fixes**: Code actions for lint warnings — brace expr arguments and add result variable to catch
+- **Snippets**: 25 snippets for Tk widgets, Expect automation, TclOO classes, and common patterns (dict iteration, file I/O, package provide, test case)
+- **Package Installation**: `installPackage()` now works via teacup auto-detection with manual fallback (copy to auto_path + `pkg_mkIndex`)
+- **Dependency Management**: `installDependencies` and `updateDependencies` commands now perform real package installation with success/failure tracking
+- **Settings**: `tcl.lint.enable`, `tcl.lint.maxLineLength`, `tcl.lint.exprBracing`, `tcl.packages.installDirectory`
+
+### Dependencies
+- Updated `@eslint/eslintrc` to 3.3.4
+- Updated `@types/node` to 25.3.5
+- Updated `@typescript-eslint/eslint-plugin` to 8.56.1
+- Updated `@typescript-eslint/parser` to 8.56.1
+- Updated `eslint` to 10.0.2
+- Updated `glob` to 13.0.6
+
 ## [0.5.2] - 2026-02-20
 
 ### Fixed
@@ -138,5 +157,4 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 ---
 
 **Known Limitations:**
-- Debug adapter has basic launch/output support; full stepping/variables inspection not yet implemented
 - Formatter handles most cases but may need refinement for complex nested structures

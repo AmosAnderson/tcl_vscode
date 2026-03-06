@@ -8,13 +8,14 @@ This document provides a comprehensive reference for all configuration options a
 3. [Diagnostics Settings](#diagnostics-settings)
 4. [REPL Settings](#repl-settings)
 5. [Interpreter Settings](#interpreter-settings)
-6. [Package Settings](#package-settings)
-7. [Test Settings](#test-settings)
-8. [Editor Integration](#editor-integration)
-9. [Per-Project Configuration](#per-project-configuration)
-10. [Environment Variables](#environment-variables)
-11. [Configuration Precedence](#configuration-precedence)
-12. [Performance Optimization](#performance-optimization)
+6. [Linting Settings](#linting-settings)
+7. [Package Settings](#package-settings)
+8. [Test Settings](#test-settings)
+9. [Editor Integration](#editor-integration)
+10. [Per-Project Configuration](#per-project-configuration)
+11. [Environment Variables](#environment-variables)
+12. [Configuration Precedence](#configuration-precedence)
+13. [Performance Optimization](#performance-optimization)
 
 ## General Settings
 
@@ -186,6 +187,54 @@ The extension will:
 2. Check these custom paths
 3. Allow selection via "TCL: Select Interpreter"
 
+## Linting Settings
+
+Control style linting behavior. Lint warnings appear separately from structural syntax diagnostics.
+
+### `tcl.lint.enable`
+- **Type**: `boolean`
+- **Default**: `true`
+- **Description**: Enable TCL linting for style issues
+
+```json
+"tcl.lint.enable": true
+```
+
+When enabled, checks for:
+- Unbraced `expr` arguments (double substitution risk)
+- Missing `default` clause in `switch` statements
+- `catch` without result variable
+- Line length exceeding configured maximum
+- Deprecated commands (`string bytelength`, `string wordend`, `string wordstart`)
+- Repeated `$::varName` usage in procs (suggests `global`)
+
+### `tcl.lint.maxLineLength`
+- **Type**: `number`
+- **Default**: `120`
+- **Description**: Maximum line length before warning (0 to disable)
+
+```json
+"tcl.lint.maxLineLength": 100
+```
+
+### `tcl.lint.exprBracing`
+- **Type**: `boolean`
+- **Default**: `true`
+- **Description**: Warn when expr arguments are not braced
+
+```json
+"tcl.lint.exprBracing": true
+```
+
+**Example:**
+```tcl
+# Warning:
+set result [expr $a + $b]
+
+# OK:
+set result [expr {$a + $b}]
+```
+
 ## Package Settings
 
 Control TCL package management features.
@@ -203,6 +252,17 @@ When enabled:
 - Scans workspace for `pkgIndex.tcl` files
 - Discovers package dependencies
 - Provides auto-completion for package commands
+
+### `tcl.packages.installDirectory`
+- **Type**: `string`
+- **Default**: `""`
+- **Description**: Default directory to install TCL packages to (must be on auto_path)
+
+```json
+"tcl.packages.installDirectory": "/usr/local/lib/tcl8.6"
+```
+
+When set, package installation will use this directory without prompting. When empty, the user is prompted to select from writable directories on `auto_path`.
 
 ## Test Settings
 
@@ -431,12 +491,7 @@ Remove TCL settings from your settings.json to use defaults.
 4. Check Output panel for extension errors
 
 ### Debug Configuration Loading
-```json
-{
-    // Enable extension debug output
-    "tcl.debug.enable": true
-}
-```
+Check the "TCL Package Manager" output channel for extension debug output. Use the VS Code "Developer: Toggle Developer Tools" command to see console logs from the extension host.
 
 ## Migration from Other Editors
 

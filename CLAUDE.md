@@ -29,7 +29,7 @@ Follow conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `t
 The extension's `activate()` in `src/extension.ts` registers features in order:
 
 1. **Formatting** — `TclFormattingProvider` (document + range formatting)
-2. **Diagnostics & code actions** — `TclDiagnosticProvider`, `TclCodeActionProvider`
+2. **Diagnostics, linting & code actions** — `TclDiagnosticProvider`, `TclLintProvider`, `TclCodeActionProvider`
 3. **IntelliSense** — seven providers: completion, hover, definition, reference, document symbol, workspace symbol, signature help
 4. **Phase 5 (eager):** Debug adapter, REPL, testing (`TclTestProvider`, `TclCoverageProvider`), refactoring
 5. **Phase 6 (lazy):** `ensurePhase6Initialized()` defers interpreter, package, dependency, template, and task managers until first command use
@@ -46,6 +46,10 @@ The extension's `activate()` in `src/extension.ts` registers features in order:
 
 **TCL execution model:** The extension shells out to `tclsh` for diagnostics, REPL, testing, and debugging. The interpreter path is configurable via `tcl.interpreter.path` / `tcl.repl.tclPath` settings.
 
+**Debug adapter architecture:** The debug adapter (`tclDebugAdapter.ts`) communicates with a TCL-side debug server (`src/debug/scripts/debugServer.tcl`) over a TCP socket. The debug server instruments the user's script by inserting `::debug::checkpoint` calls before each executable line, enabling breakpoints and stepping. The `compile` script includes a `copy-scripts` step to ship `.tcl` files to `out/`.
+
+**Lint provider:** `TclLintProvider` (`src/providers/lintProvider.ts`) runs style checks separately from the structural diagnostics provider, using its own `DiagnosticCollection` (`'tcl-lint'`). Quick fixes for lint warnings are handled in `TclCodeActionProvider`.
+
 ### Key Files
 
 | File | Role |
@@ -54,10 +58,16 @@ The extension's `activate()` in `src/extension.ts` registers features in order:
 | `src/data/tclCommands.ts` | Central TCL command knowledge base (800+ commands) |
 | `src/formatter/tclFormatter.ts` | Core formatting logic (no VS Code dependency) |
 | `src/formatter/formattingProvider.ts` | VS Code formatting provider wrapper |
-| `src/debug/tclDebugAdapter.ts` | Debug adapter protocol implementation |
+| `src/debug/tclDebugAdapter.ts` | Debug adapter protocol implementation (TCP socket to debugServer.tcl) |
+| `src/debug/scripts/debugServer.tcl` | TCL-side debug server with source instrumentation |
 | `src/debug/debugAdapterFactory.ts` | DAP factory + launch configuration provider |
 | `src/debug/tclREPL.ts` | Interactive REPL commands |
+| `src/providers/lintProvider.ts` | Style linting (expr bracing, switch default, line length, etc.) |
+| `src/providers/codeActionProvider.ts` | Quick fixes for diagnostics and lint warnings |
 | `src/tools/interpreterManager.ts` | Discovers system, TclKit, ActiveTcl interpreters |
+| `src/tools/packageManager.ts` | Package discovery, installation (teacup/manual) |
+| `src/tools/dependencyManager.ts` | Dependency analysis, install, and update commands |
+| `snippets/tcl.json` | TCL/Tk/Expect/TclOO snippet definitions |
 | `syntaxes/tcl.tmLanguage.json` | TextMate grammar for syntax highlighting |
 
 ### Tech Stack
