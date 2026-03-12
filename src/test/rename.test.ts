@@ -16,13 +16,16 @@ suite('TCL Rename Provider Tests', () => {
         });
 
         const position = new vscode.Position(0, 0); // Position at 'puts'
-        
+        const cts = new vscode.CancellationTokenSource();
+
         try {
-            await provider.prepareRename(doc, position, new vscode.CancellationTokenSource().token);
+            await provider.prepareRename(doc, position, cts.token);
             assert.fail('Should have thrown error for built-in command');
         } catch (error) {
             assert.ok(error instanceof Error);
             assert.ok(error.message.includes('Cannot rename built-in TCL command'));
+        } finally {
+            cts.dispose();
         }
 
         await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
@@ -35,9 +38,11 @@ suite('TCL Rename Provider Tests', () => {
         });
 
         const position = new vscode.Position(1, 0); // Position at 'myproc' call
-        
-        const result = provider.prepareRename(doc, position, new vscode.CancellationTokenSource().token);
+        const cts = new vscode.CancellationTokenSource();
+
+        const result = provider.prepareRename(doc, position, cts.token);
         assert.ok(result);
+        cts.dispose();
 
         await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     });
@@ -49,9 +54,11 @@ suite('TCL Rename Provider Tests', () => {
         });
 
     const position = new vscode.Position(1, 7); // Position within 'myvar' (skip $)
-        
-        const result = provider.prepareRename(doc, position, new vscode.CancellationTokenSource().token);
+        const cts = new vscode.CancellationTokenSource();
+
+        const result = provider.prepareRename(doc, position, cts.token);
         assert.ok(result);
+        cts.dispose();
 
         await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     });
@@ -65,8 +72,9 @@ suite('TCL Rename Provider Tests', () => {
 
         // Position on the procedure name in the definition line (after 'proc ')
         const position = new vscode.Position(0, 5); // start of 'need2'
-        const token = new vscode.CancellationTokenSource().token;
-        const edit = await provider.provideRenameEdits(doc, position, 'needX', token);
+        const cts = new vscode.CancellationTokenSource();
+        const edit = await provider.provideRenameEdits(doc, position, 'needX', cts.token);
+        cts.dispose();
         assert.ok(edit, 'Edit should be returned');
 
     await vscode.workspace.applyEdit(edit);

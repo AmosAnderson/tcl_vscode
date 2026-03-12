@@ -42,7 +42,7 @@ const BASE_TCL_COMMANDS: TclCommand[] = [
     
     // File I/O
     { name: 'open', signature: 'open fileName ?access? ?permissions?', description: 'Open file channel', category: 'file' },
-    { name: 'close', signature: 'close channelId', description: 'Close channel', category: 'file' },
+    { name: 'close', signature: 'close channelId ?readOrWrite?', description: 'Close channel', category: 'file' },
     { name: 'puts', signature: 'puts ?-nonewline? ?channelId? string', description: 'Write to channel', category: 'file' },
     { name: 'gets', signature: 'gets channelId ?varName?', description: 'Read line from channel', category: 'file' },
     { name: 'read', signature: 'read ?-nonewline? channelId ?numChars?', description: 'Read from channel', category: 'file' },
@@ -114,7 +114,6 @@ const ADDITIONAL_TCL_COMMANDS: TclCommand[] = [
     { name: 'chan', signature: 'chan subcommand ?arg ...?', description: 'Operate on channels (aliases, events, copying)', category: 'channel' },
     { name: 'clock format', signature: 'clock format time ?-format string? ?-timezone zone?', description: 'Format times with strftime-style specifiers', category: 'system' },
     { name: 'clock scan', signature: 'clock scan string ?options?', description: 'Parse textual time descriptions', category: 'system' },
-    { name: 'close', signature: 'close channelId ?readOrWrite?', description: 'Close an open channel with optional flush control', category: 'file' },
     { name: 'coroutine', signature: 'coroutine name command ?arg ...?', description: 'Create or resume coroutines', category: 'control' },
     { name: 'dde', signature: 'dde option ?arg ...?', description: 'Windows Dynamic Data Exchange interface', category: 'system' },
     { name: 'dict create', signature: 'dict create ?key value ...?', description: 'Construct a dictionary from key-value pairs', category: 'dict' },
@@ -182,7 +181,6 @@ const ADDITIONAL_TCL_COMMANDS: TclCommand[] = [
     { name: 'parray', signature: 'parray arrayName ?pattern?', description: 'Pretty-print array variables', category: 'debug' },
     { name: 'pid', signature: 'pid ?channelId?', description: 'Return process identifiers', category: 'system' },
     { name: 'place', signature: 'place option window ?arg ...?', description: 'Geometry manager for Tk widgets', category: 'tk' },
-    { name: 'proc', signature: 'proc name args body', description: 'Create a procedure', category: 'procedure' },
     { name: 'promise', signature: 'promise script', description: 'Create lazy evaluation promises', category: 'functional' },
     { name: 'refchan', signature: 'refchan create handler', description: 'Create reflected channels', category: 'channel' },
     { name: 'resource', signature: 'resource option ?arg ...?', description: 'Access platform-specific application resources', category: 'system' },

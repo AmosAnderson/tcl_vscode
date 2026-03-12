@@ -22,13 +22,18 @@ export class TclFormattingProvider implements vscode.DocumentFormattingEditProvi
         options: vscode.FormattingOptions,
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
-        const formatter = this.createFormatter(options);
-        const firstLine = document.lineAt(0);
-        const lastLine = document.lineAt(document.lineCount - 1);
-        const fullRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
-        const formatted = formatter.format(document.getText());
+        try {
+            const formatter = this.createFormatter(options);
+            const firstLine = document.lineAt(0);
+            const lastLine = document.lineAt(document.lineCount - 1);
+            const fullRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
+            const formatted = formatter.format(document.getText());
 
-        return [vscode.TextEdit.replace(fullRange, formatted)];
+            return [vscode.TextEdit.replace(fullRange, formatted)];
+        } catch (error) {
+            console.error('TCL formatting failed:', error);
+            return [];
+        }
     }
 
     provideDocumentRangeFormattingEdits(
@@ -37,9 +42,14 @@ export class TclFormattingProvider implements vscode.DocumentFormattingEditProvi
         options: vscode.FormattingOptions,
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
-        const formatter = this.createFormatter(options);
-        const formatted = formatter.format(document.getText(range));
+        try {
+            const formatter = this.createFormatter(options);
+            const formatted = formatter.format(document.getText(range));
 
-        return [vscode.TextEdit.replace(range, formatted)];
+            return [vscode.TextEdit.replace(range, formatted)];
+        } catch (error) {
+            console.error('TCL range formatting failed:', error);
+            return [];
+        }
     }
 }

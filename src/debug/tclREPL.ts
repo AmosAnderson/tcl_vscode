@@ -80,7 +80,7 @@ export class TclREPLProvider {
         }
 
         // Source the file in the REPL
-        this._terminal?.sendText(`source "${filePath}"`);
+        this._terminal?.sendText(`source {${filePath}}`);
         this._terminal?.show();
     }
 

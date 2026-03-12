@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS, STRING_SUBCOMMANDS, TCL_SNIPPETS } from '../data/tclCommands';
+import { findMatchingBrace } from '../utils/tclUtils';
 
 export class TclCompletionItemProvider implements vscode.CompletionItemProvider {
     private procedureCache: Map<string, vscode.CompletionItem[]> = new Map();
@@ -100,7 +101,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
             const argBraceStart = match.index + match[0].length - 1; // Position of opening '{'
 
             // Find matching closing brace for arguments
-            const argBraceEnd = this.findMatchingBrace(text, argBraceStart);
+            const argBraceEnd = findMatchingBrace(text, argBraceStart);
 
             let args = '';
             if (argBraceEnd !== -1) {
@@ -226,7 +227,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
 
         while ((match = procRegex.exec(text)) !== null) {
             const bodyStart = match.index + match[0].length;
-            const closeIndex = this.findMatchingBrace(text, bodyStart - 1);
+            const closeIndex = findMatchingBrace(text, bodyStart - 1);
             if (closeIndex === -1) {
                 continue;
             }
@@ -245,49 +246,6 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         }
 
         return null;
-    }
-
-    private findMatchingBrace(text: string, openBraceIndex: number): number {
-        let depth = 0;
-        let inString = false;
-        let stringChar = '';
-
-        for (let i = openBraceIndex; i < text.length; i++) {
-            const char = text[i];
-
-            if (!inString && char === '{') {
-                depth++;
-            } else if (!inString && char === '}') {
-                depth--;
-                if (depth === 0) {
-                    return i;
-                }
-            }
-
-            if (char === '"' || char === '\'') {
-                // Count consecutive backslashes before this character
-                let backslashCount = 0;
-                let checkPos = i - 1;
-                while (checkPos >= 0 && text[checkPos] === '\\') {
-                    backslashCount++;
-                    checkPos--;
-                }
-                // Quote is escaped only if odd number of backslashes before it
-                const isEscaped = backslashCount % 2 === 1;
-
-                if (!isEscaped) {
-                    if (inString && char === stringChar) {
-                        inString = false;
-                        stringChar = '';
-                    } else if (!inString) {
-                        inString = true;
-                        stringChar = char;
-                    }
-                }
-            }
-        }
-
-        return -1;
     }
 
     private getNamespaceCompletions(document: vscode.TextDocument, linePrefix: string): vscode.CompletionItem[] {

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { countBackslashes } from '../utils/tclUtils';
 
 export interface TclFormattingOptions {
     indentSize: number;
@@ -570,10 +571,9 @@ export class TclFormatter {
 
         for (let i = 0; i < line.length; i++) {
             const char = line[i];
-            const prevChar = i > 0 ? line[i - 1] : '';
 
-            // Handle escaped characters
-            if (prevChar === '\\') {
+            // Handle escaped characters (odd number of preceding backslashes)
+            if (countBackslashes(line, i) % 2 === 1) {
                 continue;
             }
 
@@ -581,9 +581,11 @@ export class TclFormatter {
             if ((char === '"' || char === "'") && !inString) {
                 inString = true;
                 stringChar = char;
-            } else if (char === stringChar && inString) {
-                inString = false;
-                stringChar = '';
+            } else if (inString && char === stringChar) {
+                if (countBackslashes(line, i) % 2 === 0) {
+                    inString = false;
+                    stringChar = '';
+                }
             }
 
             // Count braces outside of strings
@@ -606,18 +608,20 @@ export class TclFormatter {
 
         for (let i = 0; i < line.length; i++) {
             const char = line[i];
-            const prevChar = i > 0 ? line[i - 1] : '';
 
-            if (prevChar === '\\') {
+            // Handle escaped characters (odd number of preceding backslashes)
+            if (countBackslashes(line, i) % 2 === 1) {
                 continue;
             }
 
             if ((char === '"' || char === '\'') && !inString) {
                 inString = true;
                 stringChar = char;
-            } else if (char === stringChar && inString) {
-                inString = false;
-                stringChar = '';
+            } else if (inString && char === stringChar) {
+                if (countBackslashes(line, i) % 2 === 0) {
+                    inString = false;
+                    stringChar = '';
+                }
             }
 
             if (inString) {

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { escapeRegex } from '../utils/tclUtils';
 
 export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     provideDocumentSymbols(
@@ -47,11 +48,12 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                     : '...'; // Multi-line argument list: indicate it has args
 
                 const range = new vscode.Range(lineNum, 0, lineNum, line.length);
+                const col = Math.max(0, line.indexOf(procName));
                 const selectionRange = new vscode.Range(
                     lineNum,
-                    line.indexOf(procName),
+                    col,
                     lineNum,
-                    line.indexOf(procName) + procName.length
+                    col + procName.length
                 );
 
                 const procSymbol = new vscode.DocumentSymbol(
@@ -75,11 +77,12 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                 const nsName = nsMatch[1];
                 
                 const range = new vscode.Range(lineNum, 0, lineNum, line.length);
+                const nsCol = Math.max(0, line.indexOf(nsName));
                 const selectionRange = new vscode.Range(
                     lineNum,
-                    line.indexOf(nsName),
+                    nsCol,
                     lineNum,
-                    line.indexOf(nsName) + nsName.length
+                    nsCol + nsName.length
                 );
 
                 const nsSymbol = new vscode.DocumentSymbol(
@@ -107,7 +110,7 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                 
                 varNames.forEach(varName => {
                     const range = new vscode.Range(lineNum, 0, lineNum, line.length);
-                    const varIndex = line.indexOf(varName);
+                    const varIndex = Math.max(0, line.indexOf(varName));
                     const selectionRange = new vscode.Range(
                         lineNum,
                         varIndex,
@@ -137,11 +140,12 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                 const varName = variableMatch[1];
                 
                 const range = new vscode.Range(lineNum, 0, lineNum, line.length);
+                const varCol = Math.max(0, line.indexOf(varName));
                 const selectionRange = new vscode.Range(
                     lineNum,
-                    line.indexOf(varName),
+                    varCol,
                     lineNum,
-                    line.indexOf(varName) + varName.length
+                    varCol + varName.length
                 );
 
                 const varSymbol = new vscode.DocumentSymbol(
@@ -166,11 +170,12 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
                 const version = packageMatch[2];
                 
                 const range = new vscode.Range(lineNum, 0, lineNum, line.length);
+                const pkgCol = Math.max(0, line.indexOf(packageName));
                 const selectionRange = new vscode.Range(
                     lineNum,
-                    line.indexOf(packageName),
+                    pkgCol,
                     lineNum,
-                    line.indexOf(packageName) + packageName.length
+                    pkgCol + packageName.length
                 );
 
                 const packageSymbol = new vscode.DocumentSymbol(
@@ -191,16 +196,12 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
 }
 
 export class TclWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
-    private escapeRegex(lit: string): string {
-        return lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
     async provideWorkspaceSymbols(
         query: string,
         token: vscode.CancellationToken
     ): Promise<vscode.SymbolInformation[]> {
         const symbols: vscode.SymbolInformation[] = [];
-        const escapedQuery = this.escapeRegex(query);
+        const escapedQuery = escapeRegex(query);
         
         // Find all TCL files in workspace
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');

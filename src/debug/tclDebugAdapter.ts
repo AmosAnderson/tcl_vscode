@@ -84,6 +84,8 @@ export class TclDebugSession extends DebugSession {
         if (this._connected) {
             this.sendPendingBreakpoints().then(() => {
                 this.sendDebugCommand('CONFIGDONE');
+            }).catch(err => {
+                this.sendEvent(new OutputEvent(`Failed to send pending breakpoints: ${err}\n`, 'stderr'));
             });
         }
 
@@ -198,6 +200,8 @@ export class TclDebugSession extends DebugSession {
                         // Set step mode so it pauses at the first checkpoint
                         this.sendDebugCommand('STEPIN');
                     }
+                }).catch(err => {
+                    this.sendEvent(new OutputEvent(`Failed to send pending breakpoints: ${err}\n`, 'stderr'));
                 });
             }
         });
@@ -382,7 +386,7 @@ export class TclDebugSession extends DebugSession {
             const normalizedPath = filePath.replace(/\\/g, '/');
             for (const line of lines) {
                 try {
-                    await this.sendDebugCommand(`BREAK ${normalizedPath} ${line}`);
+                    await this.sendDebugCommand(`BREAK {${normalizedPath}} ${line}`);
                 } catch {
                     // Connection might not be ready yet
                 }
@@ -409,7 +413,7 @@ export class TclDebugSession extends DebugSession {
         if (this._connected && this._socket) {
             // Clear existing breakpoints for this file, then set new ones
             for (const line of clientLines) {
-                this.sendDebugCommand(`BREAK ${normalizedPath} ${line}`).catch(() => {
+                this.sendDebugCommand(`BREAK {${normalizedPath}} ${line}`).catch(() => {
                     // Ignore errors — breakpoints may not be acknowledged if connection drops
                 });
             }

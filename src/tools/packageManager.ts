@@ -2,10 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface TclPackage {
     name: string;
@@ -57,7 +58,7 @@ export class TclPackageManager {
 
             try {
                 await fs.promises.writeFile(tempScriptPath, script, 'utf8');
-                const { stdout } = await execAsync(`"${interpreterPath}" "${tempScriptPath}"`);
+                const { stdout } = await execFileAsync(interpreterPath, [tempScriptPath]);
                 return stdout.trim().split('\n').map(p => p.trim()).filter(p => p.length > 0);
             } finally {
                 try { await fs.promises.unlink(tempScriptPath); } catch (_) { /* ignore */ }
@@ -214,7 +215,7 @@ export class TclPackageManager {
 
             try {
                 await fs.promises.writeFile(tempScriptPath, script, 'utf8');
-                const { stdout } = await execAsync(`"${interpreterPath}" "${tempScriptPath}"`);
+                const { stdout } = await execFileAsync(interpreterPath, [tempScriptPath]);
                 const packageList = this.parseTclList(stdout.trim());
             
                 for (const [name, version] of packageList) {
@@ -388,11 +389,7 @@ export class TclPackageManager {
 
     private async installViaTeacup(packageName: string, version?: string): Promise<boolean> {
         try {
-            const cmd = version
-                ? `teacup install ${packageName} ${version}`
-                : `teacup install ${packageName}`;
-
-            this.outputChannel.appendLine(`Running: ${cmd}`);
+            this.outputChannel.appendLine(`Installing ${packageName}${version ? ' ' + version : ''} via teacup...`);
 
             const result = await vscode.window.withProgress(
                 {
@@ -401,7 +398,8 @@ export class TclPackageManager {
                     cancellable: false
                 },
                 async () => {
-                    const { stdout, stderr } = await execAsync(cmd, { timeout: 120000 });
+                    const versionArgs = version ? [version] : [];
+                    const { stdout, stderr } = await execFileAsync('teacup', ['install', packageName, ...versionArgs], { timeout: 120000 });
                     if (stderr && stderr.trim()) {
                         this.outputChannel.appendLine(`stderr: ${stderr}`);
                     }
@@ -502,7 +500,7 @@ export class TclPackageManager {
 
                         try {
                             await fs.promises.writeFile(tempScriptPath, indexScript, 'utf8');
-                            await execAsync(`"${interpreterPath}" "${tempScriptPath}"`);
+                            await execFileAsync(interpreterPath, [tempScriptPath]);
                         } finally {
                             try { await fs.promises.unlink(tempScriptPath); } catch (_) { /* ignore */ }
                         }
@@ -534,7 +532,7 @@ export class TclPackageManager {
     public async getLatestVersion(packageName: string): Promise<string | null> {
         if (this.installStrategy === 'teacup') {
             try {
-                const { stdout } = await execAsync(`teacup list ${packageName}`);
+                const { stdout } = await execFileAsync('teacup', ['list', packageName]);
                 const lines = stdout.trim().split('\n');
                 // teacup list output has versions; pick the last (latest)
                 for (let i = lines.length - 1; i >= 0; i--) {
@@ -556,7 +554,7 @@ export class TclPackageManager {
 
             try {
                 await fs.promises.writeFile(tempScriptPath, script, 'utf8');
-                const { stdout } = await execAsync(`"${interpreterPath}" "${tempScriptPath}"`);
+                const { stdout } = await execFileAsync(interpreterPath, [tempScriptPath]);
                 const versions = stdout.trim().split(/\s+/).filter(v => v.length > 0);
                 return versions.length > 0 ? versions[versions.length - 1] : null;
             } finally {

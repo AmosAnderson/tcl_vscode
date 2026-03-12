@@ -53,7 +53,9 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidSaveTextDocument(validateDocument)
     );
 
-    vscode.workspace.textDocuments.forEach(validateDocument);
+    for (const doc of vscode.workspace.textDocuments) {
+        validateDocument(doc).catch(() => {});
+    }
 
     context.subscriptions.push(
         vscode.languages.registerCodeActionsProvider('tcl', codeActionProvider)
@@ -310,6 +312,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register disposal for core providers
     context.subscriptions.push(completionProvider);
     context.subscriptions.push(diagnosticProvider);
+    context.subscriptions.push(lintProvider);
     context.subscriptions.push(
         debugAdapterFactory,
         testProvider,

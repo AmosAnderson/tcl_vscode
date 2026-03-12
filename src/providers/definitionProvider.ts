@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { escapeRegex } from '../utils/tclUtils';
 
 export class TclDefinitionProvider implements vscode.DefinitionProvider {
     async provideDefinition(
@@ -37,13 +38,9 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
         return null;
     }
 
-    private escapeRegex(lit: string): string {
-        return lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
     private findProcedureInDocument(document: vscode.TextDocument, procName: string): vscode.Location | null {
         const text = document.getText();
-        const name = this.escapeRegex(procName);
+        const name = escapeRegex(procName);
         // Match: proc <name> {args} {body}
         const procRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{[^}]*\\}\\s*\\{`, 'g');
         const match = procRegex.exec(text);
@@ -60,7 +57,7 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
     private async findProcedureInWorkspace(procName: string): Promise<vscode.Location[]> {
         const locations: vscode.Location[] = [];
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-        const name = this.escapeRegex(procName);
+        const name = escapeRegex(procName);
 
         for (const file of files) {
             try {
@@ -86,7 +83,7 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
     private async findNamespaceInWorkspace(nsName: string): Promise<vscode.Location | null> {
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
         
-        const escaped = this.escapeRegex(nsName);
+        const escaped = escapeRegex(nsName);
         for (const file of files) {
             try {
                 const document = await vscode.workspace.openTextDocument(file);
@@ -111,10 +108,6 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
 }
 
 export class TclReferenceProvider implements vscode.ReferenceProvider {
-    private escapeRegex(lit: string): string {
-        return lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
     async provideReferences(
         document: vscode.TextDocument,
         position: vscode.Position,
@@ -127,7 +120,7 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
         }
 
         const word = document.getText(wordRange);
-        const escapedWord = this.escapeRegex(word);
+        const escapedWord = escapeRegex(word);
         const references: vscode.Location[] = [];
 
         // Check if we're on a procedure definition
@@ -159,13 +152,13 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
     private async findProcedureReferences(procName: string): Promise<vscode.Location[]> {
         const references: vscode.Location[] = [];
         const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-        const escaped = this.escapeRegex(procName);
-        
+        const escaped = escapeRegex(procName);
+
         for (const file of files) {
             try {
                 const document = await vscode.workspace.openTextDocument(file);
                 const text = document.getText();
-                
+
                 // Find procedure calls (not definitions)
                 const callRegex = new RegExp(`\\b${escaped}\\b(?!\\s*{)`, 'g');
                 let match;

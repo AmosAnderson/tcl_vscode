@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
+import { findMatchingBrace } from '../utils/tclUtils';
 
 export class TclHoverProvider implements vscode.HoverProvider {
     provideHover(
@@ -84,7 +85,7 @@ export class TclHoverProvider implements vscode.HoverProvider {
 
                 // Find the matching closing brace for arguments
                 const startIdx = lineOffset + line.indexOf('{');
-                const endIdx = this.findMatchingBrace(text, startIdx);
+                const endIdx = findMatchingBrace(text, startIdx);
 
                 let args = '';
                 if (endIdx !== -1) {
@@ -115,51 +116,6 @@ export class TclHoverProvider implements vscode.HoverProvider {
         }
 
         return null;
-    }
-
-    private findMatchingBrace(text: string, openIdx: number): number {
-        let depth = 0;
-        let inString = false;
-        let stringChar = '';
-
-        for (let i = openIdx; i < text.length; i++) {
-            const char = text[i];
-
-            if (char === '"' || char === "'") {
-                // Count consecutive backslashes before this character
-                let backslashCount = 0;
-                let checkPos = i - 1;
-                while (checkPos >= 0 && text[checkPos] === '\\') {
-                    backslashCount++;
-                    checkPos--;
-                }
-                // Quote is escaped only if odd number of backslashes before it
-                const isEscaped = backslashCount % 2 === 1;
-
-                if (!isEscaped) {
-                    if (!inString) {
-                        inString = true;
-                        stringChar = char;
-                    } else if (char === stringChar) {
-                        inString = false;
-                        stringChar = '';
-                    }
-                }
-                continue;
-            }
-
-            if (!inString) {
-                if (char === '{') {
-                    depth++;
-                } else if (char === '}') {
-                    depth--;
-                    if (depth === 0) {
-                        return i;
-                    }
-                }
-            }
-        }
-        return -1;
     }
 
     private getVariableInfo(document: vscode.TextDocument, position: vscode.Position, varName: string): {

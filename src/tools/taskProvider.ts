@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
 interface TclTaskDefinition extends vscode.TaskDefinition {
     type: 'tcl';
@@ -214,7 +215,8 @@ export class TclTaskProvider implements vscode.TaskProvider {
         switch (command) {
             case 'run_tests':
                 return new vscode.ShellExecution(
-                    `${interpreterPath} ${path.join(this.workspaceRoot || '', 'run_tests.tcl')}`
+                    interpreterPath,
+                    [path.join(this.workspaceRoot || '', 'run_tests.tcl')]
                 );
                 
             case 'build_package':
@@ -227,13 +229,12 @@ export class TclTaskProvider implements vscode.TaskProvider {
                 return this.createPackageExecution();
                 
             default:
-                return new vscode.ShellExecution(`${command} ${args.join(' ')}`);
+                return new vscode.ShellExecution(command, args);
         }
     }
 
     private createBuildPackageExecution(): vscode.ShellExecution {
-        const script = `
-#!/usr/bin/env tclsh
+        const script = `#!/usr/bin/env tclsh
 # Build package script
 
 puts "Building package..."
@@ -255,7 +256,7 @@ foreach file $files {
 if {![file exists build/pkgIndex.tcl]} {
     set pkg_name [file tail [pwd]]
     set pkg_version "1.0"
-    
+
     set fp [open build/pkgIndex.tcl w]
     puts $fp "package ifneeded $pkg_name $pkg_version [list source [file join \\$dir main.tcl]]"
     close $fp
@@ -263,18 +264,18 @@ if {![file exists build/pkgIndex.tcl]} {
 
 puts "Package built in ./build directory"
 `;
-        
-        return new vscode.ShellExecution(`echo '${script}' | tclsh`);
+        const tmpFile = path.join(os.tmpdir(), `tcl_task_build_${Date.now()}.tcl`);
+        fs.writeFileSync(tmpFile, script, 'utf8');
+        return new vscode.ShellExecution('tclsh', [tmpFile]);
     }
 
     private createInstallDepsExecution(): vscode.ShellExecution {
-        const script = `
-#!/usr/bin/env tclsh
+        const script = `#!/usr/bin/env tclsh
 # Install dependencies from Package.tcl
 
 if {[file exists Package.tcl]} {
     source Package.tcl
-    
+
     # Look for require statements
     set fp [open Package.tcl r]
     while {[gets $fp line] >= 0} {
@@ -292,13 +293,13 @@ if {[file exists Package.tcl]} {
     puts "No Package.tcl found"
 }
 `;
-        
-        return new vscode.ShellExecution(`echo '${script}' | tclsh`);
+        const tmpFile = path.join(os.tmpdir(), `tcl_task_deps_${Date.now()}.tcl`);
+        fs.writeFileSync(tmpFile, script, 'utf8');
+        return new vscode.ShellExecution('tclsh', [tmpFile]);
     }
 
     private createPackageExecution(): vscode.ShellExecution {
-        const script = `
-#!/usr/bin/env tclsh
+        const script = `#!/usr/bin/env tclsh
 # Create package from Package.tcl
 
 if {![file exists Package.tcl]} {
@@ -331,8 +332,9 @@ exec tar -cf $pkg_file {*}$files
 
 puts "Package created: $pkg_file"
 `;
-        
-        return new vscode.ShellExecution(`echo '${script}' | tclsh`);
+        const tmpFile = path.join(os.tmpdir(), `tcl_task_pkg_${Date.now()}.tcl`);
+        fs.writeFileSync(tmpFile, script, 'utf8');
+        return new vscode.ShellExecution('tclsh', [tmpFile]);
     }
 }
 

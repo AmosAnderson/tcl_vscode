@@ -80,19 +80,20 @@ proc ::debug::sendResponse {msg} {
 }
 
 proc ::debug::handleCommand {line} {
-    set parts [split $line " "]
-    set cmd [lindex $parts 0]
+    # Use lindex instead of split to properly handle brace-quoted elements
+    # (e.g. file paths with spaces sent as {/path/with spaces})
+    set cmd [lindex $line 0]
 
     switch $cmd {
         "BREAK" {
-            set file [lindex $parts 1]
-            set lineNum [lindex $parts 2]
+            set file [lindex $line 1]
+            set lineNum [lindex $line 2]
             set ::debug::breakpoints($file,$lineNum) 1
             ::debug::sendResponse "OK BREAK $file $lineNum"
         }
         "CLEAR" {
-            set file [lindex $parts 1]
-            set lineNum [lindex $parts 2]
+            set file [lindex $line 1]
+            set lineNum [lindex $line 2]
             catch {unset ::debug::breakpoints($file,$lineNum)}
             ::debug::sendResponse "OK CLEAR $file $lineNum"
         }
@@ -104,35 +105,39 @@ proc ::debug::handleCommand {line} {
         "CONTINUE" {
             set ::debug::stepMode "none"
             set ::debug::paused 0
+            ::debug::sendResponse "OK CONTINUE"
         }
         "STEP" {
             set ::debug::stepMode "next"
             set ::debug::stepLevel [::debug::getCurrentLevel]
             set ::debug::paused 0
+            ::debug::sendResponse "OK STEP"
         }
         "STEPIN" {
             set ::debug::stepMode "in"
             set ::debug::paused 0
+            ::debug::sendResponse "OK STEPIN"
         }
         "STEPOUT" {
             set ::debug::stepMode "out"
             set ::debug::stepLevel [::debug::getCurrentLevel]
             set ::debug::paused 0
+            ::debug::sendResponse "OK STEPOUT"
         }
         "VARS" {
-            set scope [lindex $parts 1]
+            set scope [lindex $line 1]
             ::debug::sendVariables $scope
         }
         "EVAL" {
-            set expr [join [lrange $parts 1 end] " "]
+            set expr [join [lrange $line 1 end] " "]
             ::debug::evalExpression $expr
         }
         "STACK" {
             ::debug::sendCallStack
         }
         "SETVAR" {
-            set name [lindex $parts 1]
-            set value [join [lrange $parts 2 end] " "]
+            set name [lindex $line 1]
+            set value [join [lrange $line 2 end] " "]
             ::debug::setVariable $name $value
         }
         "CONFIGDONE" {
@@ -316,14 +321,14 @@ proc ::debug::runScript {} {
 }
 
 proc ::debug::tempDir {} {
+    # Try Tcl 8.6.13+ built-in
+    catch {return [file tempdir]}
     if {[info exists ::env(TMPDIR)]} {
         return $::env(TMPDIR)
     } elseif {[info exists ::env(TMP)]} {
         return $::env(TMP)
     } elseif {[info exists ::env(TEMP)]} {
         return $::env(TEMP)
-    } elseif {$::tcl_platform(platform) eq "windows"} {
-        return "C:/Temp"
     }
     return "/tmp"
 }

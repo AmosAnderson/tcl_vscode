@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 
 interface TclTestResult {
@@ -259,11 +260,11 @@ export class TclTestProvider {
             // Create a test execution script and write to temp file
             // (tclsh does not support a -c flag for inline script execution)
             const testScript = this.createTestExecutionScript(file, testName);
-            const tmpFile = path.join(os.tmpdir(), `tcl_test_${Date.now()}.tcl`);
+            const tmpFile = path.join(os.tmpdir(), `tcl_test_${crypto.randomUUID()}.tcl`);
             fs.writeFileSync(tmpFile, testScript, 'utf8');
 
             const startTime = Date.now();
-            const process = spawn(tclPath, [tmpFile], {
+            const testProcess = spawn(tclPath, [tmpFile], {
                 cwd: path.dirname(file),
                 stdio: ['pipe', 'pipe', 'pipe']
             });
@@ -271,15 +272,23 @@ export class TclTestProvider {
             let output = '';
             let errorOutput = '';
 
-            process.stdout?.on('data', (data) => {
+            // Timeout: kill test process after 60 seconds
+            const timeoutTimer = setTimeout(() => {
+                testProcess.kill();
+                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+                reject(new Error(`Test '${testName}' timed out after 60 seconds`));
+            }, 60000);
+
+            testProcess.stdout?.on('data', (data) => {
                 output += data.toString();
             });
 
-            process.stderr?.on('data', (data) => {
+            testProcess.stderr?.on('data', (data) => {
                 errorOutput += data.toString();
             });
 
-            process.on('close', (code) => {
+            testProcess.on('close', (code) => {
+                clearTimeout(timeoutTimer);
                 try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
                 const duration = Date.now() - startTime;
 
@@ -311,7 +320,8 @@ export class TclTestProvider {
                 resolve(result);
             });
 
-            process.on('error', (error) => {
+            testProcess.on('error', (error) => {
+                clearTimeout(timeoutTimer);
                 try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
                 reject(error);
             });

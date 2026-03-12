@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 
@@ -151,7 +152,7 @@ puts "Coverage data saved"
             const tclPath = config.get<string>('test.tclPath', 'tclsh');
 
             // Write script to temp file — tclsh does not support a -c flag
-            const tmpFile = path.join(os.tmpdir(), `tcl_coverage_${Date.now()}.tcl`);
+            const tmpFile = path.join(os.tmpdir(), `tcl_coverage_${crypto.randomUUID()}.tcl`);
             try {
                 fs.writeFileSync(tmpFile, script, 'utf8');
             } catch (err) {
