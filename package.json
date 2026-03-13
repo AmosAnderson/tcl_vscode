@@ -2,7 +2,7 @@
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
   "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
     "vscode": "^1.109.0"
@@ -318,18 +318,22 @@
     "@vscode/debugprotocol": "^1.68.0"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.4",
+    "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^25.3.5",
-    "@types/vscode": "^1.109.0",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.56.1",
+    "@types/node": "^25.5.0",
+    "@types/vscode": "^1.110.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
-    "eslint": "^10.0.2",
+    "eslint": "^10.0.3",
     "glob": "^13.0.6",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "diff": "^8.0.3",
+    "serialize-javascript": "^7.0.4"
   }
 }

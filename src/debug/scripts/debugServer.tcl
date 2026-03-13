@@ -104,25 +104,25 @@ proc ::debug::handleCommand {line} {
         }
         "CONTINUE" {
             set ::debug::stepMode "none"
-            set ::debug::paused 0
             ::debug::sendResponse "OK CONTINUE"
+            set ::debug::paused 0
         }
         "STEP" {
             set ::debug::stepMode "next"
             set ::debug::stepLevel [::debug::getCurrentLevel]
-            set ::debug::paused 0
             ::debug::sendResponse "OK STEP"
+            set ::debug::paused 0
         }
         "STEPIN" {
             set ::debug::stepMode "in"
-            set ::debug::paused 0
             ::debug::sendResponse "OK STEPIN"
+            set ::debug::paused 0
         }
         "STEPOUT" {
             set ::debug::stepMode "out"
             set ::debug::stepLevel [::debug::getCurrentLevel]
-            set ::debug::paused 0
             ::debug::sendResponse "OK STEPOUT"
+            set ::debug::paused 0
         }
         "VARS" {
             set scope [lindex $line 1]

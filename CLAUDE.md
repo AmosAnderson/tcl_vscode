@@ -16,7 +16,7 @@ npm test            # Run VS Code integration tests (Mocha + @vscode/test-electr
 npm run package     # Build .vsix extension package
 ```
 
-Tests use `@vscode/test-electron`, which launches a full VS Code instance — there is no way to run a single test file in isolation. Individual test files live in `src/test/` and are loaded by the suite runner at `src/test/suite/index.ts`.
+Tests use `@vscode/test-electron`, which launches a full VS Code instance — there is no way to run a single test file in isolation. Individual test files live in `src/test/` and are loaded by the suite runner at `src/test/suite/index.ts`. Tests use Mocha's **TDD** interface (`suite()`/`test()`), not BDD (`describe()`/`it()`).
 
 Debugging the extension: press **F5** in VS Code with `.vscode/launch.json` configured — this opens an Extension Development Host window.
 

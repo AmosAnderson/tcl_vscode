@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
+import { createTempTclPath } from '../utils/tclUtils';
 
 interface TclTaskDefinition extends vscode.TaskDefinition {
     type: 'tcl';
@@ -12,8 +12,6 @@ interface TclTaskDefinition extends vscode.TaskDefinition {
 }
 
 export class TclTaskProvider implements vscode.TaskProvider {
-    private tasks: vscode.Task[] | undefined;
-    
     constructor(private workspaceRoot: string | undefined) {}
 
     public provideTasks(): Thenable<vscode.Task[]> | undefined {
@@ -264,7 +262,7 @@ if {![file exists build/pkgIndex.tcl]} {
 
 puts "Package built in ./build directory"
 `;
-        const tmpFile = path.join(os.tmpdir(), `tcl_task_build_${Date.now()}.tcl`);
+        const tmpFile = createTempTclPath('task_build');
         fs.writeFileSync(tmpFile, script, 'utf8');
         return new vscode.ShellExecution('tclsh', [tmpFile]);
     }
@@ -293,7 +291,7 @@ if {[file exists Package.tcl]} {
     puts "No Package.tcl found"
 }
 `;
-        const tmpFile = path.join(os.tmpdir(), `tcl_task_deps_${Date.now()}.tcl`);
+        const tmpFile = createTempTclPath('task_deps');
         fs.writeFileSync(tmpFile, script, 'utf8');
         return new vscode.ShellExecution('tclsh', [tmpFile]);
     }
@@ -332,7 +330,7 @@ exec tar -cf $pkg_file {*}$files
 
 puts "Package created: $pkg_file"
 `;
-        const tmpFile = path.join(os.tmpdir(), `tcl_task_pkg_${Date.now()}.tcl`);
+        const tmpFile = createTempTclPath('task_pkg');
         fs.writeFileSync(tmpFile, script, 'utf8');
         return new vscode.ShellExecution('tclsh', [tmpFile]);
     }

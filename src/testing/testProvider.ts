@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { spawn } from 'child_process';
+import { createTempTclPath } from '../utils/tclUtils';
 
 interface TclTestResult {
     name: string;
@@ -260,7 +261,7 @@ export class TclTestProvider {
             // Create a test execution script and write to temp file
             // (tclsh does not support a -c flag for inline script execution)
             const testScript = this.createTestExecutionScript(file, testName);
-            const tmpFile = path.join(os.tmpdir(), `tcl_test_${crypto.randomUUID()}.tcl`);
+            const tmpFile = createTempTclPath('test');
             fs.writeFileSync(tmpFile, testScript, 'utf8');
 
             const startTime = Date.now();

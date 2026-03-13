@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
-import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+import { countBackslashes, createTempTclPath, toForwardSlashes } from '../utils/tclUtils';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export class TclDiagnosticProvider {
     private diagnosticCollection: vscode.DiagnosticCollection;
@@ -61,17 +61,7 @@ export class TclDiagnosticProvider {
 
                 // Handle double-quoted string literals (TCL only uses " for quoting, not ')
                 if (char === '"') {
-                    // Count consecutive backslashes before this character
-                    let backslashCount = 0;
-                    let checkPos = charPos - 1;
-                    while (checkPos >= 0 && line[checkPos] === '\\') {
-                        backslashCount++;
-                        checkPos--;
-                    }
-                    // Quote is escaped only if odd number of backslashes before it
-                    const isEscaped = backslashCount % 2 === 1;
-
-                    if (!isEscaped) {
+                    if (countBackslashes(line, charPos) % 2 === 0) {
                         inString = !inString;
                     }
                     continue;
@@ -84,7 +74,11 @@ export class TclDiagnosticProvider {
                     break; // Rest of line is comment
                 }
 
-                // Track braces and brackets
+                // Track braces and brackets (skip if backslash-escaped)
+                if (char === '{' || char === '}' || char === '[' || char === ']') {
+                    if (countBackslashes(line, charPos) % 2 === 1) continue;
+                }
+
                 if (char === '{') {
                     braceStack.push(lineNum);
                 } else if (char === '}') {
@@ -204,25 +198,25 @@ export class TclDiagnosticProvider {
             }
 
             // Create temporary file for validation (cross-platform)
-            const tmpDir = os.tmpdir();
-            const tempFile = path.join(tmpDir, `tcl_validate_${Date.now()}.tcl`);
+            const tempFile = createTempTclPath('validate');
             fs.writeFileSync(tempFile, document.getText(), 'utf8');
 
             try {
                 // Run tclsh with syntax-only check wrapper
                 // TCL doesn't have a -n flag like other shells, so we use a minimal wrapper
+                // Use brace-quoting to prevent TCL substitution in file paths
                 const checkScript = `
-if {[catch {source "${tempFile.replace(/\\/g, '/')}"} errorMsg]} {
+if {[catch {source {${toForwardSlashes(tempFile)}}} errorMsg]} {
     puts stderr $errorMsg
     exit 1
 }
 exit 0
 `;
-                const checkFile = path.join(tmpDir, `tcl_check_${Date.now()}.tcl`);
+                const checkFile = createTempTclPath('check');
                 fs.writeFileSync(checkFile, checkScript, 'utf8');
 
                 try {
-                    await execAsync(`"${tclshPath}" "${checkFile}"`);
+                    await execFileAsync(tclshPath, [checkFile]);
                 } catch (error: any) {
                     // tclsh returns non-zero exit code for syntax errors
                     if (error.stderr) {
@@ -255,19 +249,21 @@ exit 0
             ? ['tclsh.exe', 'tclsh86.exe', 'tclsh85.exe', 'C:/Tcl/bin/tclsh.exe', 'C:/Tcl/bin/tclsh86.exe']
             : ['tclsh', 'tclsh8.7', 'tclsh8.6', 'tclsh8.5', '/usr/bin/tclsh', '/usr/local/bin/tclsh'];
 
-        for (const candidate of candidates) {
-            try {
-                // Use echo and pipe to tclsh since tclsh doesn't support -c flag
-                const cmd = process.platform === 'win32'
-                    ? `echo puts $tcl_version | "${candidate}"`
-                    : `echo 'puts $tcl_version' | "${candidate}"`;
-                await execAsync(cmd);
-                return candidate;
-            } catch (_) {
-                continue;
+        const probeFile = createTempTclPath('probe');
+        fs.writeFileSync(probeFile, 'puts $tcl_version', 'utf8');
+        try {
+            for (const candidate of candidates) {
+                try {
+                    await execFileAsync(candidate, [probeFile]);
+                    return candidate;
+                } catch (_) {
+                    continue;
+                }
             }
+            return null;
+        } finally {
+            try { fs.unlinkSync(probeFile); } catch (_) { /* ignore */ }
         }
-        return null;
     }
 
     private parseTclshErrors(stderr: string, document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): void {

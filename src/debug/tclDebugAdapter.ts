@@ -4,6 +4,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as net from 'net';
 import * as path from 'path';
 import * as fs from 'fs';
+import { toForwardSlashes } from '../utils/tclUtils';
 
 interface TclLaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
     program: string;
@@ -383,7 +384,7 @@ export class TclDebugSession extends DebugSession {
     private async sendPendingBreakpoints(): Promise<void> {
         for (const [filePath, lines] of this._pendingBreakpoints) {
             // Clear all breakpoints for this file first
-            const normalizedPath = filePath.replace(/\\/g, '/');
+            const normalizedPath = toForwardSlashes(filePath);
             for (const line of lines) {
                 try {
                     await this.sendDebugCommand(`BREAK {${normalizedPath}} ${line}`);
@@ -397,7 +398,7 @@ export class TclDebugSession extends DebugSession {
     protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
         const filePath = args.source.path as string;
         const clientLines = args.lines || [];
-        const normalizedPath = filePath.replace(/\\/g, '/');
+        const normalizedPath = toForwardSlashes(filePath);
 
         // Store breakpoints for sending when connected
         this._pendingBreakpoints.set(filePath, clientLines);

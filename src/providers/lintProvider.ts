@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { countBackslashes } from '../utils/tclUtils';
 
 export class TclLintProvider {
     private diagnosticCollection: vscode.DiagnosticCollection;
@@ -88,7 +89,10 @@ export class TclLintProvider {
                 let inString = false;
                 for (let c = 0; c < scanLine.length; c++) {
                     const ch = scanLine[c];
-                    if (c > 0 && scanLine[c - 1] === '\\') continue;
+
+                    if (ch === '"' || ch === '{' || ch === '}') {
+                        if (countBackslashes(scanLine, c) % 2 === 1) continue;
+                    }
 
                     if (ch === '"') {
                         inString = !inString;
@@ -232,12 +236,17 @@ export class TclLintProvider {
             if (inProc) {
                 let inString = false;
                 for (let c = 0; c < line.length; c++) {
-                    if (c > 0 && line[c - 1] === '\\') continue;
-                    if (line[c] === '"') {
+                    const ch = line[c];
+
+                    if (ch === '"' || ch === '{' || ch === '}') {
+                        if (countBackslashes(line, c) % 2 === 1) continue;
+                    }
+
+                    if (ch === '"') {
                         inString = !inString;
                     } else if (!inString) {
-                        if (line[c] === '{') braceDepth++;
-                        if (line[c] === '}') braceDepth--;
+                        if (ch === '{') braceDepth++;
+                        if (ch === '}') braceDepth--;
                     }
                 }
 

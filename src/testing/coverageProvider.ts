@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
+import { createTempTclPath, toForwardSlashes } from '../utils/tclUtils';
 
 interface CoverageData {
     file: string;
@@ -113,11 +114,11 @@ proc save_coverage_data {filename} {
 }
 
 # Source each test file
-${testFiles.map(file => `
-if {[catch {source "${file}"} error]} {
-    puts stderr "Error sourcing ${file}: $error"
+${testFiles.map(file => { const fp = toForwardSlashes(file); return `
+if {[catch {source {${fp}}} error]} {
+    puts stderr "Error sourcing ${fp}: $error"
 }
-`).join('\n')}
+`; }).join('\n')}
 
 # Run all test procedures
 foreach proc_name [info procs test_*] {
@@ -152,7 +153,7 @@ puts "Coverage data saved"
             const tclPath = config.get<string>('test.tclPath', 'tclsh');
 
             // Write script to temp file — tclsh does not support a -c flag
-            const tmpFile = path.join(os.tmpdir(), `tcl_coverage_${crypto.randomUUID()}.tcl`);
+            const tmpFile = createTempTclPath('coverage');
             try {
                 fs.writeFileSync(tmpFile, script, 'utf8');
             } catch (err) {

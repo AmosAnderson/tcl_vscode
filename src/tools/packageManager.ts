@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
-import { exec, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { createTempTclPath, toForwardSlashes } from '../utils/tclUtils';
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 export interface TclPackage {
@@ -40,7 +39,7 @@ export class TclPackageManager {
 
     private async detectInstallStrategy(): Promise<void> {
         try {
-            await execAsync('teacup version');
+            await execFileAsync('teacup', ['version']);
             this.installStrategy = 'teacup';
             this.outputChannel.appendLine('Package install strategy: teacup');
         } catch {
@@ -54,7 +53,7 @@ export class TclPackageManager {
             const config = vscode.workspace.getConfiguration('tcl');
             const interpreterPath = config.get<string>('interpreter.path', 'tclsh');
             const script = `puts [join $auto_path \\n]`;
-            const tempScriptPath = path.join(os.tmpdir(), `tcl_autopath_${Date.now()}.tcl`);
+            const tempScriptPath = createTempTclPath('autopath');
 
             try {
                 await fs.promises.writeFile(tempScriptPath, script, 'utf8');
@@ -211,7 +210,7 @@ export class TclPackageManager {
                 puts $packages
             `;
             
-            const tempScriptPath = path.join(os.tmpdir(), `tcl_pkg_discover_${Date.now()}.tcl`);
+            const tempScriptPath = createTempTclPath('pkg_discover');
 
             try {
                 await fs.promises.writeFile(tempScriptPath, script, 'utf8');
@@ -495,8 +494,8 @@ export class TclPackageManager {
 
                         // Run pkg_mkIndex to generate index
                         const interpreterPath = config.get<string>('interpreter.path', 'tclsh');
-                        const indexScript = `pkg_mkIndex ${destPath.replace(/\\/g, '/')} *.tcl`;
-                        const tempScriptPath = path.join(os.tmpdir(), `tcl_pkgindex_${Date.now()}.tcl`);
+                        const indexScript = `pkg_mkIndex ${toForwardSlashes(destPath)} *.tcl`;
+                        const tempScriptPath = createTempTclPath('pkgindex');
 
                         try {
                             await fs.promises.writeFile(tempScriptPath, indexScript, 'utf8');
@@ -549,8 +548,8 @@ export class TclPackageManager {
         try {
             const config = vscode.workspace.getConfiguration('tcl');
             const interpreterPath = config.get<string>('interpreter.path', 'tclsh');
-            const script = `puts [package versions ${packageName}]`;
-            const tempScriptPath = path.join(os.tmpdir(), `tcl_pkgver_${Date.now()}.tcl`);
+            const script = `puts [package versions {${packageName}}]`;
+            const tempScriptPath = createTempTclPath('pkgver');
 
             try {
                 await fs.promises.writeFile(tempScriptPath, script, 'utf8');

@@ -2,6 +2,33 @@
 
 All notable changes to the "TCL Syntax" extension will be documented in this file.
 
+## [0.6.1] - 2026-03-12
+
+### Fixed
+- **Security**: Replaced all `exec` shell-string calls with `execFile` array-based invocation to prevent command injection (diagnosticProvider, packageManager, debug adapter)
+- **Security**: Switched to TCL brace-quoting (`source {path}`) for file paths in generated scripts to prevent substitution attacks
+- **Correctness**: Fixed debug server response ordering — OK acknowledgments now sent before resuming `vwait` to prevent race conditions
+- **Correctness**: Fixed naive single-backslash escape detection in lintProvider, diagnosticProvider, and formatter with proper `countBackslashes` utility
+- **Correctness**: Fixed `findMatchingBrace` incorrectly treating single-quotes as string delimiters (TCL only uses double-quotes)
+- **Correctness**: Guarded all `indexOf` results in symbolProvider with `Math.max(0, ...)` to prevent negative column values
+- **Robustness**: Replaced `Date.now()` with `crypto.randomUUID()` for temp file names to avoid collisions
+- **Robustness**: Added 60-second timeout to test process execution
+- **Robustness**: Added try-catch to formatting providers to prevent unhandled exceptions
+- **Robustness**: Added proper disposal of lintProvider via `context.subscriptions`
+- **Cleanup**: Extracted shared `createTempTclPath`, `toForwardSlashes`, `countBackslashes`, `escapeRegex`, and `findMatchingBrace` into `src/utils/tclUtils.ts` to deduplicate code across 8 files
+- **Cleanup**: Removed duplicate `proc` and `close` entries from `tclCommands.ts`
+- **Cleanup**: Removed dead `tasks` field from `TclTaskProvider`
+- **Cleanup**: Ensured all `CancellationTokenSource` instances are disposed in tests
+
+### Dependencies
+- Updated `@eslint/eslintrc` to 3.3.5
+- Updated `@types/node` to 25.5.0
+- Updated `@types/vscode` to 1.110.0
+- Updated `@typescript-eslint/eslint-plugin` to 8.57.0
+- Updated `@typescript-eslint/parser` to 8.57.0
+- Updated `eslint` to 10.0.3
+- Added overrides for `diff` (8.0.3) and `serialize-javascript` (7.0.4) to resolve transitive vulnerabilities
+
 ## [0.6.0] - 2026-03-05
 
 ### Added
