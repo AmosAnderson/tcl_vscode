@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import { which } from '../utils/tclUtils';
 
 export class TclREPLProvider {
     private _terminal: vscode.Terminal | undefined;
@@ -13,11 +15,20 @@ export class TclREPLProvider {
         const config = vscode.workspace.getConfiguration('tcl');
         const tclPath = config.get<string>('repl.tclPath', 'tclsh');
 
+        // Validate the interpreter path before using it
+        const resolvedPath = await which(tclPath);
+        if (!resolvedPath) {
+            vscode.window.showErrorMessage(
+                `TCL interpreter not found: "${tclPath}". Check the tcl.repl.tclPath setting.`
+            );
+            return;
+        }
+
         try {
             // Create a simple terminal that runs tclsh directly
             this._terminal = vscode.window.createTerminal({
                 name: 'TCL REPL',
-                shellPath: tclPath,
+                shellPath: resolvedPath,
                 iconPath: new vscode.ThemeIcon('terminal'),
                 color: new vscode.ThemeColor('terminal.ansiBlue')
             });

@@ -2,10 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface TclInterpreter {
     path: string;
@@ -173,12 +173,16 @@ export class TclInterpreterManager {
 
     private async getTclVersion(tclPath: string): Promise<string | null> {
         try {
-            // tclsh doesn't support -c flag, use echo and pipe instead
-            const cmd = process.platform === 'win32'
-                ? `echo puts $tcl_version | "${tclPath}"`
-                : `echo 'puts $tcl_version' | "${tclPath}"`;
-            const { stdout } = await execAsync(cmd);
-            return stdout.trim();
+            // Write a tiny script to a temp file, then run it with execFile
+            // (avoids shell interpolation and command injection via tclPath)
+            const tmpFile = path.join(os.tmpdir(), `tcl_ver_${Date.now()}.tcl`);
+            fs.writeFileSync(tmpFile, 'puts $tcl_version\nexit 0\n', 'utf8');
+            try {
+                const { stdout } = await execFileAsync(tclPath, [tmpFile], { timeout: 5000 });
+                return stdout.trim();
+            } finally {
+                try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+            }
         } catch (error) {
             return null;
         }

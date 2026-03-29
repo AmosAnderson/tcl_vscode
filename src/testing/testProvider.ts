@@ -275,7 +275,11 @@ export class TclTestProvider {
 
             // Timeout: kill test process after 60 seconds
             const timeoutTimer = setTimeout(() => {
-                testProcess.kill();
+                testProcess.kill('SIGTERM');
+                // Force kill if SIGTERM doesn't work after 2 seconds
+                setTimeout(() => {
+                    try { testProcess.kill('SIGKILL'); } catch { /* already dead */ }
+                }, 2000);
                 try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
                 reject(new Error(`Test '${testName}' timed out after 60 seconds`));
             }, 60000);

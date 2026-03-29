@@ -468,6 +468,11 @@ proc ::debug::sendCallStack {} {
 }
 
 # ---- Expression Evaluation ----
+# SECURITY NOTE: The EVAL command executes arbitrary TCL in the debugged
+# process's context.  This is standard debugger functionality but means any
+# client connected to the debug socket can run code with the same privileges
+# as the debugged script.  The server only accepts connections on localhost
+# (see startServer) to mitigate remote exploitation.
 
 proc ::debug::evalExpression {expr} {
     set level [::debug::getInspectionLevel]

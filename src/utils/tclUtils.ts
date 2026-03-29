@@ -5,6 +5,11 @@
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 /** Escape special regex characters in a literal string. */
 export function escapeRegex(lit: string): string {
@@ -19,6 +24,50 @@ export function createTempTclPath(label: string): string {
 /** Normalize a file path to forward slashes (for embedding in TCL scripts). */
 export function toForwardSlashes(p: string): string {
     return p.replace(/\\/g, '/');
+}
+
+/**
+ * Clean up orphaned temp TCL files from previous sessions.
+ * Removes files matching `tcl_*_*.tcl` in the OS temp directory
+ * that are older than `maxAgeMs` (default 1 hour).
+ */
+export function cleanupTempTclFiles(maxAgeMs: number = 3600000): void {
+    try {
+        const tmpDir = os.tmpdir();
+        const now = Date.now();
+        const files = fs.readdirSync(tmpDir);
+        for (const file of files) {
+            if (/^tcl_\w+_[\w-]+\.tcl$/.test(file)) {
+                const fullPath = path.join(tmpDir, file);
+                try {
+                    const stat = fs.statSync(fullPath);
+                    if (now - stat.mtimeMs > maxAgeMs) {
+                        fs.unlinkSync(fullPath);
+                    }
+                } catch { /* file may have been removed already */ }
+            }
+        }
+    } catch { /* best-effort cleanup */ }
+}
+
+/**
+ * Resolve a command name to an absolute path, similar to Unix `which`.
+ * Returns the resolved path or `null` if not found.
+ */
+export async function which(cmd: string): Promise<string | null> {
+    // If it's already an absolute path, just check existence
+    if (path.isAbsolute(cmd)) {
+        return fs.existsSync(cmd) ? cmd : null;
+    }
+
+    try {
+        const command = process.platform === 'win32' ? 'where' : 'which';
+        const { stdout } = await execFileAsync(command, [cmd], { timeout: 5000 });
+        const resolved = stdout.trim().split(/\r?\n/)[0];
+        return resolved || null;
+    } catch {
+        return null;
+    }
 }
 
 /**

@@ -19,9 +19,18 @@ import { TclPackageManager } from './tools/packageManager';
 import { TclProjectTemplates } from './tools/projectTemplates';
 import { TclTaskProviderManager } from './tools/taskProvider';
 import { TclDependencyManager } from './tools/dependencyManager';
+import { cleanupTempTclFiles } from './utils/tclUtils';
+
+// Track disposable providers so deactivate() can clean them up
+let activeTestProvider: TclTestProvider | undefined;
+let activeCoverageProvider: TclCoverageProvider | undefined;
+let activeDebugAdapterFactory: TclDebugAdapterDescriptorFactory | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('TCL Language Support is now active!');
+
+    // Clean up any orphaned temp TCL files from previous sessions
+    cleanupTempTclFiles();
 
     // Register formatting providers for TCL documents
     const formattingProvider = new TclFormattingProvider();
@@ -129,6 +138,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register Phase 5 features: Debugging Support
     const debugAdapterFactory = new TclDebugAdapterDescriptorFactory();
+    activeDebugAdapterFactory = debugAdapterFactory;
     const debugConfigProvider = new TclConfigurationProvider();
     
     context.subscriptions.push(
@@ -142,9 +152,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Register Phase 5 features: Testing Support
     const testProvider = new TclTestProvider();
+    activeTestProvider = testProvider;
     await testProvider.discoverAllTests();
 
     const coverageProvider = new TclCoverageProvider();
+    activeCoverageProvider = coverageProvider;
     
     context.subscriptions.push(
         vscode.commands.registerCommand('tcl.runTests', () => {
@@ -323,5 +335,15 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export async function deactivate() {
-    // No additional teardown required
+    // Dispose providers that may hold child processes or sockets
+    try { activeTestProvider?.dispose(); } catch { /* ignore */ }
+    try { activeCoverageProvider?.dispose(); } catch { /* ignore */ }
+    try { activeDebugAdapterFactory?.dispose(); } catch { /* ignore */ }
+
+    activeTestProvider = undefined;
+    activeCoverageProvider = undefined;
+    activeDebugAdapterFactory = undefined;
+
+    // Clean up any temp files created during this session
+    cleanupTempTclFiles(0);
 }

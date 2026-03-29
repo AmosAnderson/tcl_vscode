@@ -100,6 +100,21 @@ export class TclDebugSession extends DebugSession {
                 return;
             }
 
+            // Resolve to absolute path and verify it doesn't escape the workspace
+            const resolvedProgram = path.resolve(args.cwd || '.', args.program);
+            const workspaceFolders = args.cwd ? [args.cwd] : [];
+            if (workspaceFolders.length > 0) {
+                const inWorkspace = workspaceFolders.some(folder =>
+                    resolvedProgram.startsWith(path.resolve(folder))
+                );
+                if (!inWorkspace) {
+                    this.sendEvent(new OutputEvent(
+                        `Warning: Debug target "${resolvedProgram}" is outside the workspace directory.\n`,
+                        'console'
+                    ));
+                }
+            }
+
             this._currentFile = args.program;
             this._stopOnEntry = args.stopOnEntry !== false;
 
@@ -131,6 +146,16 @@ export class TclDebugSession extends DebugSession {
             let portResolved = false;
             let stdoutBuffer = '';
 
+            // Timeout: fail if no port is detected within 10 seconds
+            const portTimeout = setTimeout(() => {
+                if (!portResolved) {
+                    portResolved = true;
+                    this.sendEvent(new OutputEvent('Debug server did not report a port within 10 seconds.\n', 'stderr'));
+                    this.cleanup();
+                    this.sendEvent(new TerminatedEvent());
+                }
+            }, 10000);
+
             this._tclProcess.stdout?.on('data', (data) => {
                 const text = data.toString();
 
@@ -139,6 +164,7 @@ export class TclDebugSession extends DebugSession {
                     const portMatch = stdoutBuffer.match(/DEBUG_PORT:(\d+)/);
                     if (portMatch) {
                         portResolved = true;
+                        clearTimeout(portTimeout);
                         const port = parseInt(portMatch[1], 10);
 
                         // Output any text before the port marker
@@ -160,6 +186,10 @@ export class TclDebugSession extends DebugSession {
             });
 
             this._tclProcess.on('exit', (code) => {
+                if (!portResolved) {
+                    portResolved = true;
+                    clearTimeout(portTimeout);
+                }
                 this._isRunning = false;
                 this._socket = null;
                 this.sendEvent(new TerminatedEvent());
@@ -203,6 +233,7 @@ export class TclDebugSession extends DebugSession {
                     }
                 }).catch(err => {
                     this.sendEvent(new OutputEvent(`Failed to send pending breakpoints: ${err}\n`, 'stderr'));
+                    this.cleanup();
                 });
             }
         });
