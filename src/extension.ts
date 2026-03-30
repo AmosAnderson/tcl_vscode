@@ -160,8 +160,7 @@ export async function activate(context: vscode.ExtensionContext) {
     
     context.subscriptions.push(
         vscode.commands.registerCommand('tcl.runTests', () => {
-            // Test running is handled by the test provider automatically
-            vscode.window.showInformationMessage('Use the Test Explorer to run tests');
+            vscode.commands.executeCommand('testing.runAll');
         }),
 
         vscode.commands.registerCommand('tcl.generateCoverage', async () => {

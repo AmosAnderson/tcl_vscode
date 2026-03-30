@@ -227,6 +227,18 @@
       {
         "command": "tcl.runBuild",
         "title": "TCL: Run Build Task"
+      },
+      {
+        "command": "tcl.runTask",
+        "title": "TCL: Run Task"
+      },
+      {
+        "command": "tcl.runTestTask",
+        "title": "TCL: Run Test Task"
+      },
+      {
+        "command": "tcl.configureTasks",
+        "title": "TCL: Configure Tasks"
       }
     ],
     "snippets": [

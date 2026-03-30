@@ -352,10 +352,6 @@ export class TclTaskProviderManager {
                 vscode.commands.executeCommand('workbench.action.tasks.runTask');
             }),
 
-            vscode.commands.registerCommand('tcl.runBuildTask', () => {
-                vscode.commands.executeCommand('workbench.action.tasks.build');
-            }),
-
             vscode.commands.registerCommand('tcl.runTestTask', () => {
                 vscode.commands.executeCommand('workbench.action.tasks.test');
             }),

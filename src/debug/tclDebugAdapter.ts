@@ -657,8 +657,13 @@ export class TclDebugSession extends DebugSession {
         }
 
         if (this._tclProcess) {
-            this._tclProcess.kill();
+            const proc = this._tclProcess;
             this._tclProcess = null;
+            proc.kill('SIGTERM');
+            const forceKillTimer = setTimeout(() => {
+                try { proc.kill('SIGKILL'); } catch { /* already dead */ }
+            }, 2000);
+            proc.once('exit', () => clearTimeout(forceKillTimer));
         }
 
         this._debugRequests = [];

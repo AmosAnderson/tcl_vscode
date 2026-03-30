@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as crypto from 'crypto';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { createTempTclPath } from '../utils/tclUtils';
 
 interface TclTestResult {
@@ -30,6 +30,7 @@ export class TclTestProvider {
     private _testController: vscode.TestController;
     private _testData = new WeakMap<vscode.TestItem, { file: string; line: number }>();
     private _fileWatcher: vscode.FileSystemWatcher | undefined;
+    private _runningProcesses = new Set<ChildProcess>();
 
     constructor() {
         this._outputChannel = vscode.window.createOutputChannel('TCL Tests');
@@ -270,17 +271,26 @@ export class TclTestProvider {
                 stdio: ['pipe', 'pipe', 'pipe']
             });
 
+            this._runningProcesses.add(testProcess);
+            let settled = false;
             let output = '';
             let errorOutput = '';
+            let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+
+            const settle = () => {
+                this._runningProcesses.delete(testProcess);
+                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+            };
 
             // Timeout: kill test process after 60 seconds
             const timeoutTimer = setTimeout(() => {
+                if (settled) { return; }
+                settled = true;
                 testProcess.kill('SIGTERM');
-                // Force kill if SIGTERM doesn't work after 2 seconds
-                setTimeout(() => {
+                forceKillTimer = setTimeout(() => {
                     try { testProcess.kill('SIGKILL'); } catch { /* already dead */ }
                 }, 2000);
-                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+                settle();
                 reject(new Error(`Test '${testName}' timed out after 60 seconds`));
             }, 60000);
 
@@ -294,7 +304,10 @@ export class TclTestProvider {
 
             testProcess.on('close', (code) => {
                 clearTimeout(timeoutTimer);
-                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+                if (forceKillTimer) { clearTimeout(forceKillTimer); }
+                if (settled) { return; }
+                settled = true;
+                settle();
                 const duration = Date.now() - startTime;
 
                 // Parse the test result
@@ -327,7 +340,10 @@ export class TclTestProvider {
 
             testProcess.on('error', (error) => {
                 clearTimeout(timeoutTimer);
-                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+                if (forceKillTimer) { clearTimeout(forceKillTimer); }
+                if (settled) { return; }
+                settled = true;
+                settle();
                 reject(error);
             });
         });
@@ -387,6 +403,10 @@ if {[info procs ${escapedTestName}] ne ""} {
     }
 
     public dispose(): void {
+        for (const proc of this._runningProcesses) {
+            try { proc.kill('SIGKILL'); } catch { /* already dead */ }
+        }
+        this._runningProcesses.clear();
         this._outputChannel.dispose();
         this._testController.dispose();
         this._fileWatcher?.dispose();
