@@ -10,6 +10,7 @@ namespace eval ::debug {
     variable sock ""
     variable breakpoints
     variable breakpointConditions
+    variable breakpointLogMessages
     variable paused 0
     variable stepMode "none"
     variable stepLevel -1
@@ -20,6 +21,7 @@ namespace eval ::debug {
 
     array set breakpoints {}
     array set breakpointConditions {}
+    array set breakpointLogMessages {}
 }
 
 # ---- Socket Communication ----
@@ -91,8 +93,10 @@ proc ::debug::handleCommand {line} {
             set file [lindex $line 1]
             set lineNum [lindex $line 2]
             set condition [lindex $line 3]
+            set logMessage [lindex $line 4]
             set ::debug::breakpoints($file,$lineNum) 1
             set ::debug::breakpointConditions($file,$lineNum) $condition
+            set ::debug::breakpointLogMessages($file,$lineNum) $logMessage
             ::debug::sendResponse "OK BREAK $file $lineNum"
         }
         "CLEAR" {
@@ -100,6 +104,7 @@ proc ::debug::handleCommand {line} {
             set lineNum [lindex $line 2]
             catch {unset ::debug::breakpoints($file,$lineNum)}
             catch {unset ::debug::breakpointConditions($file,$lineNum)}
+            catch {unset ::debug::breakpointLogMessages($file,$lineNum)}
             ::debug::sendResponse "OK CLEAR $file $lineNum"
         }
         "CLEARALL" {
@@ -107,6 +112,8 @@ proc ::debug::handleCommand {line} {
             array set ::debug::breakpoints {}
             array unset ::debug::breakpointConditions
             array set ::debug::breakpointConditions {}
+            array unset ::debug::breakpointLogMessages
+            array set ::debug::breakpointLogMessages {}
             ::debug::sendResponse "OK CLEARALL"
         }
         "CONTINUE" {
@@ -234,6 +241,7 @@ proc ::debug::getIndent {line} {
 proc ::debug::checkpoint {file line} {
     variable breakpoints
     variable breakpointConditions
+    variable breakpointLogMessages
     variable stepMode
     variable stepLevel
     variable currentFile
@@ -247,18 +255,27 @@ proc ::debug::checkpoint {file line} {
 
     # Check breakpoints
     if {[info exists breakpoints($file,$line)]} {
-        set shouldPause 1
-        # Evaluate conditional breakpoint
-        if {[info exists breakpointConditions($file,$line)] &&
-            $breakpointConditions($file,$line) ne ""} {
-            set condition $breakpointConditions($file,$line)
+        # Check if this is a logpoint (logMessage takes priority over condition)
+        if {[info exists breakpointLogMessages($file,$line)] &&
+            $breakpointLogMessages($file,$line) ne ""} {
+            set logMsg $breakpointLogMessages($file,$line)
             set level [::debug::getInspectionLevel]
-            if {[catch {set result [uplevel #$level [list expr $condition]]} err]} {
-                # Condition evaluation error — break unconditionally and warn
-                ::debug::sendResponse "OUTPUT WARNING: Breakpoint condition error at $file:$line: $err"
-            } elseif {!$result} {
-                # Condition is false — skip this breakpoint
-                set shouldPause 0
+            # Interpolate {expression} placeholders by evaluating in user's frame
+            set interpolated [::debug::interpolateLogMessage $logMsg $level]
+            ::debug::sendResponse "LOG $interpolated"
+            # Logpoints do not pause — continue execution
+        } else {
+            set shouldPause 1
+            # Evaluate conditional breakpoint
+            if {[info exists breakpointConditions($file,$line)] &&
+                $breakpointConditions($file,$line) ne ""} {
+                set condition $breakpointConditions($file,$line)
+                set level [::debug::getInspectionLevel]
+                if {[catch {set result [uplevel #$level [list expr $condition]]} err]} {
+                    ::debug::sendResponse "OUTPUT WARNING: Breakpoint condition error at $file:$line: $err"
+                } elseif {!$result} {
+                    set shouldPause 0
+                }
             }
         }
     }
@@ -290,6 +307,34 @@ proc ::debug::checkpoint {file line} {
         # Enter event loop to process commands while paused
         vwait ::debug::paused
     }
+}
+
+proc ::debug::interpolateLogMessage {msg level} {
+    # Replace {expression} placeholders with evaluated results from user's frame.
+    # Uses a regex to find all {...} groups and substitutes each one.
+    set result ""
+    set remaining $msg
+    while {[regexp -indices {\{([^}]*)\}} $remaining match exprRange]} {
+        set matchStart [lindex $match 0]
+        set matchEnd [lindex $match 1]
+        set exprStart [lindex $exprRange 0]
+        set exprEnd [lindex $exprRange 1]
+        # Append text before the match
+        append result [string range $remaining 0 [expr {$matchStart - 1}]]
+        # Extract and evaluate the expression
+        set expression [string range $remaining $exprStart $exprEnd]
+        if {[catch {set val [uplevel #$level [list set $expression]]} err]} {
+            # If simple variable lookup fails, try evaluating as an expression
+            if {[catch {set val [uplevel #$level [list expr $expression]]} err2]} {
+                set val "<error: $err2>"
+            }
+        }
+        append result $val
+        # Advance past the match
+        set remaining [string range $remaining [expr {$matchEnd + 1}] end]
+    }
+    append result $remaining
+    return $result
 }
 
 proc ::debug::getCurrentLevel {} {

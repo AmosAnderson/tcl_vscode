@@ -27,7 +27,7 @@ export class TclDebugSession extends DebugSession {
     private _tclProcess: ChildProcess | null = null;
     private _socket: net.Socket | null = null;
     private _breakpoints = new Map<string, DebugProtocol.Breakpoint[]>();
-    private _pendingBreakpoints = new Map<string, Array<{line: number; condition: string}>>();
+    private _pendingBreakpoints = new Map<string, Array<{line: number; condition: string; logMessage: string}>>();
     private _currentLine = 0;
     private _currentFile = '';
     private _isRunning = false;
@@ -66,7 +66,7 @@ export class TclDebugSession extends DebugSession {
         response.body.supportTerminateDebuggee = true;
         response.body.supportsDelayedStackTraceLoading = false;
         response.body.supportsLoadedSourcesRequest = false;
-        response.body.supportsLogPoints = false;
+        response.body.supportsLogPoints = true;
         response.body.supportsTerminateThreadsRequest = false;
         response.body.supportsSetVariable = true;
         response.body.supportsSetExpression = false;
@@ -297,6 +297,9 @@ export class TclDebugSession extends DebugSession {
         } else if (message.startsWith('OK ')) {
             // Acknowledgment — resolve pending request if any
             this.resolvePendingRequest(message);
+        } else if (message.startsWith('LOG ')) {
+            const logMsg = message.substring(4);
+            this.sendEvent(new OutputEvent(logMsg + '\n', 'console'));
         } else if (message.startsWith('OUTPUT ')) {
             const outputMsg = message.substring(7);
             this.sendEvent(new OutputEvent(outputMsg + '\n', 'console'));
@@ -422,7 +425,7 @@ export class TclDebugSession extends DebugSession {
             const normalizedPath = toForwardSlashes(filePath);
             for (const bp of bps) {
                 try {
-                    await this.sendDebugCommand(`BREAK {${normalizedPath}} ${bp.line} {${bp.condition}}`);
+                    await this.sendDebugCommand(`BREAK {${normalizedPath}} ${bp.line} {${bp.condition}} {${bp.logMessage}}`);
                 } catch {
                     // Connection might not be ready yet
                 }
@@ -435,10 +438,11 @@ export class TclDebugSession extends DebugSession {
         const sourceBreakpoints = args.breakpoints || [];
         const normalizedPath = toForwardSlashes(filePath);
 
-        // Store breakpoints (with conditions) for sending when connected
+        // Store breakpoints (with conditions and log messages) for sending when connected
         const pending = sourceBreakpoints.map(sbp => ({
             line: sbp.line,
-            condition: sbp.condition || ''
+            condition: sbp.condition || '',
+            logMessage: sbp.logMessage || ''
         }));
         this._pendingBreakpoints.set(filePath, pending);
 
@@ -453,7 +457,7 @@ export class TclDebugSession extends DebugSession {
         if (this._connected && this._socket) {
             // Clear existing breakpoints for this file, then set new ones
             for (const bp of pending) {
-                this.sendDebugCommand(`BREAK {${normalizedPath}} ${bp.line} {${bp.condition}}`).catch(() => {
+                this.sendDebugCommand(`BREAK {${normalizedPath}} ${bp.line} {${bp.condition}} {${bp.logMessage}}`).catch(() => {
                     // Ignore errors — breakpoints may not be acknowledged if connection drops
                 });
             }
