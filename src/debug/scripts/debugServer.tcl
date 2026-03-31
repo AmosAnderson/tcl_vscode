@@ -9,6 +9,7 @@ package require Tcl 8.5
 namespace eval ::debug {
     variable sock ""
     variable breakpoints
+    variable breakpointConditions
     variable paused 0
     variable stepMode "none"
     variable stepLevel -1
@@ -18,6 +19,7 @@ namespace eval ::debug {
     variable scriptFile ""
 
     array set breakpoints {}
+    array set breakpointConditions {}
 }
 
 # ---- Socket Communication ----
@@ -88,18 +90,23 @@ proc ::debug::handleCommand {line} {
         "BREAK" {
             set file [lindex $line 1]
             set lineNum [lindex $line 2]
+            set condition [lindex $line 3]
             set ::debug::breakpoints($file,$lineNum) 1
+            set ::debug::breakpointConditions($file,$lineNum) $condition
             ::debug::sendResponse "OK BREAK $file $lineNum"
         }
         "CLEAR" {
             set file [lindex $line 1]
             set lineNum [lindex $line 2]
             catch {unset ::debug::breakpoints($file,$lineNum)}
+            catch {unset ::debug::breakpointConditions($file,$lineNum)}
             ::debug::sendResponse "OK CLEAR $file $lineNum"
         }
         "CLEARALL" {
             array unset ::debug::breakpoints
             array set ::debug::breakpoints {}
+            array unset ::debug::breakpointConditions
+            array set ::debug::breakpointConditions {}
             ::debug::sendResponse "OK CLEARALL"
         }
         "CONTINUE" {
@@ -226,6 +233,7 @@ proc ::debug::getIndent {line} {
 
 proc ::debug::checkpoint {file line} {
     variable breakpoints
+    variable breakpointConditions
     variable stepMode
     variable stepLevel
     variable currentFile
@@ -240,6 +248,19 @@ proc ::debug::checkpoint {file line} {
     # Check breakpoints
     if {[info exists breakpoints($file,$line)]} {
         set shouldPause 1
+        # Evaluate conditional breakpoint
+        if {[info exists breakpointConditions($file,$line)] &&
+            $breakpointConditions($file,$line) ne ""} {
+            set condition $breakpointConditions($file,$line)
+            set level [::debug::getInspectionLevel]
+            if {[catch {set result [uplevel #$level [list expr $condition]]} err]} {
+                # Condition evaluation error — break unconditionally and warn
+                ::debug::sendResponse "OUTPUT WARNING: Breakpoint condition error at $file:$line: $err"
+            } elseif {!$result} {
+                # Condition is false — skip this breakpoint
+                set shouldPause 0
+            }
+        }
     }
 
     # Check stepping
