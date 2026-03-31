@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { which } from '../utils/tclUtils';
+import { which, escapeTclString } from '../utils/tclUtils';
+
+/** Patterns that indicate potentially dangerous TCL commands (shell-out, file I/O). */
+const DANGEROUS_TCL_PATTERNS = /\b(exec\s|open\s+\|)/;
 
 export class TclREPLProvider {
     private _terminal: vscode.Terminal | undefined;
@@ -63,6 +66,18 @@ export class TclREPLProvider {
             return;
         }
 
+        // Warn when code contains commands that can execute system processes
+        if (DANGEROUS_TCL_PATTERNS.test(text)) {
+            const choice = await vscode.window.showWarningMessage(
+                'The selected code contains commands that can execute system processes (exec, open |). Evaluate anyway?',
+                { modal: true },
+                'Evaluate'
+            );
+            if (choice !== 'Evaluate') {
+                return;
+            }
+        }
+
         // Start REPL if not already running
         if (!this._terminal) {
             await this.startREPL();
@@ -90,8 +105,8 @@ export class TclREPLProvider {
             await this.startREPL();
         }
 
-        // Source the file in the REPL
-        this._terminal?.sendText(`source {${filePath}}`);
+        // Source the file in the REPL using double-quote quoting with proper escaping
+        this._terminal?.sendText(`source "${escapeTclString(filePath)}"`);
         this._terminal?.show();
     }
 

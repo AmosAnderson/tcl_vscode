@@ -149,6 +149,11 @@ proc ::debug::handleCommand {line} {
         "STACK" {
             ::debug::sendCallStack
         }
+        "ARRAY" {
+            set name [lindex $line 1]
+            set scope [lindex $line 2]
+            ::debug::sendArrayElements $name $scope
+        }
         "SETVAR" {
             set name [lindex $line 1]
             set value [join [lrange $line 2 end] " "]
@@ -416,7 +421,7 @@ proc ::debug::sendVariables {scope} {
                 }
                 # Check if it's an array
                 if {[uplevel #$level [list array exists $name]]} {
-                    set val [uplevel #$level [list array get $name]]
+                    set val [uplevel #$level [list array size $name]]
                     lappend vars [list $name "(array)" $val]
                 } else {
                     lappend vars [list $name $val]
@@ -432,7 +437,7 @@ proc ::debug::sendVariables {scope} {
             if {$name in {auto_path auto_index env tcl_platform tcl_library tcl_version tcl_patchLevel}} continue
             if {[catch {set val [set ::$name]}]} {
                 if {[array exists ::$name]} {
-                    set val [array get ::$name]
+                    set val [array size ::$name]
                     lappend vars [list $name "(array)" $val]
                 }
                 continue
@@ -452,6 +457,39 @@ proc ::debug::sendVariables {scope} {
         } else {
             set val [lindex $varInfo 1]
             append response "\x1E$name\x1F$val"
+        }
+    }
+
+    ::debug::sendResponse $response
+}
+
+proc ::debug::sendArrayElements {name scope} {
+    set response "ARRAY"
+
+    if {$scope eq "local"} {
+        set level [::debug::getInspectionLevel]
+        if {[catch {
+            if {[uplevel #$level [list array exists $name]]} {
+                set keys [lsort [uplevel #$level [list array names $name]]]
+                foreach key $keys {
+                    if {[catch {set val [uplevel #$level [list set "${name}($key)"]]} err]} {
+                        set val "<error: $err>"
+                    }
+                    append response "\x1E${name}(${key})\x1F$val"
+                }
+            }
+        }]} {
+            # Error accessing array — return empty response
+        }
+    } elseif {$scope eq "global"} {
+        if {[array exists ::$name]} {
+            set keys [lsort [array names ::$name]]
+            foreach key $keys {
+                if {[catch {set val [set "::${name}($key)"]} err]} {
+                    set val "<error: $err>"
+                }
+                append response "\x1E${name}(${key})\x1F$val"
+            }
         }
     }
 

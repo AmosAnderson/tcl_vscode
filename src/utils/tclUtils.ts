@@ -27,6 +27,19 @@ export function toForwardSlashes(p: string): string {
 }
 
 /**
+ * Escape a string for safe embedding inside a TCL double-quoted context.
+ * Handles backslashes, double quotes, dollar signs, and square brackets.
+ */
+export function escapeTclString(str: string): string {
+    return str
+        .replace(/\\/g, '\\\\')
+        .replace(/"/g, '\\"')
+        .replace(/\$/g, '\\$')
+        .replace(/\[/g, '\\[')
+        .replace(/\]/g, '\\]');
+}
+
+/**
  * Clean up orphaned temp TCL files from previous sessions.
  * Removes files matching `tcl_*_*.tcl` in the OS temp directory
  * that are older than `maxAgeMs` (default 1 hour).

@@ -276,11 +276,14 @@ export class TclDebugSession extends DebugSession {
 
             // Clear cached variables on pause
             this._cachedVariables.clear();
+            this._variableHandles.reset();
             this._cachedStack = [];
 
             this.sendEvent(new StoppedEvent('breakpoint', TclDebugSession.THREAD_ID));
         } else if (message.startsWith('VARS')) {
             this.handleVarsResponse(message);
+        } else if (message.startsWith('ARRAY')) {
+            this.handleArrayElemsResponse(message);
         } else if (message.startsWith('STACK')) {
             this.handleStackResponse(message);
         } else if (message.startsWith('EVALRESULT ')) {
@@ -319,10 +322,13 @@ export class TclDebugSession extends DebugSession {
             if (fields.length >= 2) {
                 const name = fields[0];
                 if (fields.length === 3 && fields[1] === '(array)') {
-                    // Array variable — show array contents as the value
+                    // Array variable — display element count, mark type for expansion
+                    const count = parseInt(fields[2], 10);
+                    const displayValue = isNaN(count) ? 'Array' : `Array[${count}]`;
                     variables.push({
                         name,
-                        value: fields[2],
+                        value: displayValue,
+                        type: 'array',
                         variablesReference: 0
                     });
                 } else {
@@ -332,6 +338,27 @@ export class TclDebugSession extends DebugSession {
                         variablesReference: 0
                     });
                 }
+            }
+        }
+
+        this.resolvePendingRequest(message, variables);
+    }
+
+    private handleArrayElemsResponse(message: string): void {
+        const RS = '\x1E';
+        const US = '\x1F';
+        const records = message.split(RS);
+
+        const variables: DebugProtocol.Variable[] = [];
+
+        for (let i = 1; i < records.length; i++) {
+            const fields = records[i].split(US);
+            if (fields.length >= 2) {
+                variables.push({
+                    name: fields[0],
+                    value: fields[1],
+                    variablesReference: 0
+                });
             }
         }
 
@@ -530,13 +557,22 @@ export class TclDebugSession extends DebugSession {
     }
 
     protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
-        const scope = this._variableHandles.get(args.variablesReference);
+        const handleValue = this._variableHandles.get(args.variablesReference);
 
-        if (!this._connected || this._isRunning) {
+        if (!handleValue || !this._connected || this._isRunning) {
             response.body = { variables: [] };
             this.sendResponse(response);
             return;
         }
+
+        // Array expansion request (handle value is "array:<scope>:<varName>")
+        if (handleValue.startsWith('array:')) {
+            this.handleArrayExpansion(handleValue, response);
+            return;
+        }
+
+        // Scope variable request (local/global)
+        const scope = handleValue;
 
         // Check cache
         if (this._cachedVariables.has(scope)) {
@@ -546,8 +582,37 @@ export class TclDebugSession extends DebugSession {
         }
 
         this.sendDebugCommand<DebugProtocol.Variable[]>(`VARS ${scope}`).then(variables => {
+            // Post-process: create expandable handles for array variables
+            for (const v of variables) {
+                if (v.type === 'array') {
+                    v.variablesReference = this._variableHandles.create(`array:${scope}:${v.name}`);
+                }
+            }
             this._cachedVariables.set(scope, variables);
             response.body = { variables };
+            this.sendResponse(response);
+        }).catch(() => {
+            response.body = { variables: [] };
+            this.sendResponse(response);
+        });
+    }
+
+    private handleArrayExpansion(handleValue: string, response: DebugProtocol.VariablesResponse): void {
+        // Parse "array:<scope>:<varName>"
+        const colonIdx = handleValue.indexOf(':', 6); // after "array:"
+        const scope = handleValue.substring(6, colonIdx);
+        const varName = handleValue.substring(colonIdx + 1);
+
+        // Check cache
+        if (this._cachedVariables.has(handleValue)) {
+            response.body = { variables: this._cachedVariables.get(handleValue)! };
+            this.sendResponse(response);
+            return;
+        }
+
+        this.sendDebugCommand<DebugProtocol.Variable[]>(`ARRAY {${varName}} ${scope}`).then(elements => {
+            this._cachedVariables.set(handleValue, elements);
+            response.body = { variables: elements };
             this.sendResponse(response);
         }).catch(() => {
             response.body = { variables: [] };

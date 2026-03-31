@@ -339,5 +339,25 @@
       "cleanupTests"
     ],
     "description": "tcltest test case boilerplate"
+  },
+  "Procedure Definition": {
+    "prefix": "proc",
+    "body": [
+      "proc ${1:name} {${2:args}} {",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Define a TCL procedure"
+  },
+  "Namespace Eval": {
+    "prefix": "namespace_eval",
+    "body": [
+      "namespace eval ::${1:name} {",
+      "\tnamespace export ${2:*}",
+      "",
+      "\t${0}",
+      "}"
+    ],
+    "description": "Create a namespace with eval block"
   }
 }

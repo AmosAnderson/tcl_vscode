@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
-import { createTempTclPath } from '../utils/tclUtils';
+import { createTempTclPath, escapeTclString } from '../utils/tclUtils';
 
 interface TclTestResult {
     name: string;
@@ -349,20 +349,9 @@ export class TclTestProvider {
         });
     }
 
-    private escapeTclString(str: string): string {
-        // Escape special characters for TCL strings
-        // Replace backslashes first, then other special characters
-        return str
-            .replace(/\\/g, '\\\\')
-            .replace(/"/g, '\\"')
-            .replace(/\$/g, '\\$')
-            .replace(/\[/g, '\\[')
-            .replace(/\]/g, '\\]');
-    }
-
     private createTestExecutionScript(file: string, testName: string): string {
         // Escape file path and test name for safe TCL execution
-        const escapedFile = this.escapeTclString(file);
+        const escapedFile = escapeTclString(file);
         const escapedTestName = testName.replace(/[^a-zA-Z0-9_:]/g, '_');
 
         // Create a script that runs a specific test

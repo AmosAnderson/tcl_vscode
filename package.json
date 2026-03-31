@@ -185,6 +185,14 @@
         "title": "TCL: Inline Variable"
       },
       {
+        "command": "tcl.inlineProcedure",
+        "title": "TCL: Inline Procedure"
+      },
+      {
+        "command": "tcl.extractNamespace",
+        "title": "TCL: Extract to Namespace"
+      },
+      {
         "command": "tcl.selectInterpreter",
         "title": "TCL: Select Interpreter"
       },
@@ -239,6 +247,14 @@
       {
         "command": "tcl.configureTasks",
         "title": "TCL: Configure Tasks"
+      },
+      {
+        "command": "tcl.runWithInterpreter",
+        "title": "TCL: Run with Interpreter..."
+      },
+      {
+        "command": "tcl.runWithArgs",
+        "title": "TCL: Run with Arguments..."
       }
     ],
     "snippets": [
