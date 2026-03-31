@@ -30,14 +30,67 @@ export class TclFormatter {
         const out: string[] = [];
         let indent = 0;
 
+        // Continuation line tracking (backslash at end of line)
+        let inContinuation = false;
+        let continuationBaseIndent = 0;
+
+        // Multi-line expr tracking (expr { ... } spanning lines)
+        let inMultiLineExpr = false;
+        let exprBraceDepth = 0;
+
         for (let line of rawLines) {
             let trimmed = line.trim();
             if (trimmed === '') { out.push(''); continue; }
 
+            // --- Multi-line expr body: preserve content, only handle indentation ---
+            if (inMultiLineExpr) {
+                const lineForCounting = this.stripInlineComment(trimmed);
+                const counts = this.countBraces(lineForCounting);
+                exprBraceDepth += counts.opening - counts.closing;
+
+                if (/^}+$/.test(trimmed)) {
+                    const braceCount = trimmed.length;
+                    if (this.options.alignBraces) {
+                        for (let i = 0; i < braceCount; i++) {
+                            indent = Math.max(0, indent - 1);
+                            out.push(this.createIndent(indent) + '}');
+                        }
+                    } else {
+                        indent = Math.max(0, indent - braceCount);
+                        out.push(this.createIndent(indent) + trimmed);
+                    }
+                } else {
+                    const leadingClosings = this.countLeadingClosings(trimmed);
+                    if (leadingClosings > 0) {
+                        indent = Math.max(0, indent - leadingClosings);
+                    }
+                    out.push(this.createIndent(indent) + trimmed);
+                    const remainingClosings = Math.max(0, counts.closing - leadingClosings);
+                    indent += counts.opening - remainingClosings;
+                    if (indent < 0) indent = 0;
+                }
+
+                if (exprBraceDepth <= 0) {
+                    inMultiLineExpr = false;
+                }
+                inContinuation = false;
+                continue;
+            }
+
             // Comment lines: preserve content unchanged, indent at current level,
             // and do NOT count their braces (they must not affect indentation).
             if (trimmed.startsWith('#')) {
-                out.push(this.createIndent(indent) + trimmed);
+                const effectiveIndent = inContinuation ? continuationBaseIndent + 1 : indent;
+                out.push(this.createIndent(effectiveIndent) + trimmed);
+                // Track continuation state for comment lines
+                if (this.isContinuationLine(trimmed)) {
+                    if (!inContinuation) {
+                        inContinuation = true;
+                        continuationBaseIndent = indent;
+                    }
+                } else {
+                    inContinuation = false;
+                }
                 continue;
             }
 
@@ -61,24 +114,33 @@ export class TclFormatter {
                     // Decrease indent for each brace, emit each on its own line
                     for (let i = 0; i < braceCount; i++) {
                         indent = Math.max(0, indent - 1);
-                        out.push(this.createIndent(indent) + '}');
+                        const displayIndent = inContinuation ? continuationBaseIndent + 1 : indent;
+                        out.push(this.createIndent(displayIndent) + '}');
                     }
                 } else {
                     indent = Math.max(0, indent - braceCount);
-                    out.push(this.createIndent(indent) + trimmed);
+                    const displayIndent = inContinuation ? continuationBaseIndent + 1 : indent;
+                    out.push(this.createIndent(displayIndent) + trimmed);
                 }
+                // Closing braces end any active continuation
+                inContinuation = false;
                 continue;
             }
 
             const leadingClosings = this.countLeadingClosings(trimmed);
 
-            // If starts with closing brace(s), move indent back accordingly before emitting
+            // If starts with closing brace(s), move indent back accordingly before emitting.
+            // This correctly handles } else { and } elseif { patterns: the leading }
+            // decreases indent, and the trailing { increases it, yielding net 0 change.
             if (leadingClosings > 0) {
                 indent = Math.max(0, indent - leadingClosings);
             }
 
+            // Calculate effective indent with continuation overlay
+            const effectiveIndent = inContinuation ? continuationBaseIndent + 1 : indent;
+
             // Emit line
-            out.push(this.createIndent(indent) + trimmed);
+            out.push(this.createIndent(effectiveIndent) + trimmed);
 
             // Count brace delta — strip inline comments first so braces inside
             // "; # ..." do not affect indentation.
@@ -89,6 +151,27 @@ export class TclFormatter {
             // Adjust indent for each opening brace that is not closed on the same line
             indent += counts.opening - remainingClosings;
             if (indent < 0) indent = 0;
+
+            // Check for multi-line expr start (takes priority over continuation)
+            if (this.isMultiLineExprStart(lineForCounting)) {
+                const exprDepth = this.getExprBraceDepth(lineForCounting);
+                if (exprDepth > 0) {
+                    inMultiLineExpr = true;
+                    exprBraceDepth = exprDepth;
+                    inContinuation = false;
+                    continue;
+                }
+            }
+
+            // Update continuation state
+            if (this.isContinuationLine(trimmed)) {
+                if (!inContinuation) {
+                    inContinuation = true;
+                    continuationBaseIndent = effectiveIndent;
+                }
+            } else {
+                inContinuation = false;
+            }
         }
 
         return out.join('\n');
@@ -639,5 +722,55 @@ export class TclFormatter {
         }
 
         return count;
+    }
+
+    /**
+     * Detects whether a line ends with a backslash continuation.
+     * A line is a continuation if it ends with an odd number of backslashes
+     * (even number means escaped backslashes, not continuation).
+     */
+    private isContinuationLine(line: string): boolean {
+        const trimmed = line.trimEnd();
+        if (trimmed.length === 0 || !trimmed.endsWith('\\')) {
+            return false;
+        }
+        let count = 0;
+        for (let i = trimmed.length - 1; i >= 0; i--) {
+            if (trimmed[i] === '\\') {
+                count++;
+            } else {
+                break;
+            }
+        }
+        return count % 2 === 1;
+    }
+
+    /**
+     * Detects whether a line starts a multi-line expr block.
+     * Matches `expr {` where the opening brace is not closed on the same line.
+     */
+    private isMultiLineExprStart(line: string): boolean {
+        const match = line.match(/\bexpr\s*\{/);
+        if (!match || match.index === undefined) {
+            return false;
+        }
+        // Count braces from the expr keyword onward to check if the block closes
+        const afterExpr = line.substring(match.index);
+        const counts = this.countBraces(afterExpr);
+        return counts.opening > counts.closing;
+    }
+
+    /**
+     * Calculates the net brace depth opened by an expr block on a single line.
+     * Used to initialize the depth counter for multi-line expr tracking.
+     */
+    private getExprBraceDepth(line: string): number {
+        const match = line.match(/\bexpr\s*\{/);
+        if (!match || match.index === undefined) {
+            return 0;
+        }
+        const afterExpr = line.substring(match.index);
+        const counts = this.countBraces(afterExpr);
+        return counts.opening - counts.closing;
     }
 }
