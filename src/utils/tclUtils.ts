@@ -133,3 +133,25 @@ export function findMatchingBrace(text: string, openIdx: number): number {
     }
     return -1;
 }
+
+/**
+ * For each line in `lines`, compute whether the line starts inside a
+ * multiline double-quoted string.  Returns a boolean array of the same
+ * length as `lines` where `true` means the line is a continuation of a
+ * string that opened on a previous line.
+ */
+export function computeMultilineStringLines(lines: string[]): boolean[] {
+    const result: boolean[] = new Array(lines.length).fill(false);
+    let inString = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        result[i] = inString;
+        const line = lines[i];
+        for (let c = 0; c < line.length; c++) {
+            if (line[c] === '"' && countBackslashes(line, c) % 2 === 0) {
+                inString = !inString;
+            }
+        }
+    }
+    return result;
+}

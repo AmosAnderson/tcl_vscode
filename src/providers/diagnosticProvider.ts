@@ -3,7 +3,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
 import * as fs from 'fs';
-import { countBackslashes, createTempTclPath, toForwardSlashes } from '../utils/tclUtils';
+import { countBackslashes, createTempTclPath, toForwardSlashes, computeMultilineStringLines } from '../utils/tclUtils';
 
 const execFileAsync = promisify(execFile);
 
@@ -51,6 +51,7 @@ export class TclDiagnosticProvider {
         let braceStack: number[] = [];
         let bracketStack: number[] = [];
         let inString = false;
+        let stringStartLine = -1;
 
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
@@ -62,6 +63,9 @@ export class TclDiagnosticProvider {
                 // Handle double-quoted string literals (TCL only uses " for quoting, not ')
                 if (char === '"') {
                     if (countBackslashes(line, charPos) % 2 === 0) {
+                        if (!inString) {
+                            stringStartLine = lineNum;
+                        }
                         inString = !inString;
                     }
                     continue;
@@ -100,12 +104,13 @@ export class TclDiagnosticProvider {
                 }
             }
 
-            // Check for unclosed double-quoted strings at end of line
-            if (inString) {
-                this.addDiagnostic(diagnostics, lineNum, 0, line.length,
-                    'Unclosed string literal', vscode.DiagnosticSeverity.Error);
-                inString = false;
-            }
+            // Multiline strings are valid in TCL — do NOT flag per-line
+        }
+
+        // Check for unclosed string at end of document
+        if (inString) {
+            this.addDiagnostic(diagnostics, stringStartLine, 0, lines[stringStartLine].length,
+                'Unclosed string literal', vscode.DiagnosticSeverity.Error);
         }
 
         // Check for unclosed braces/brackets at end of file
@@ -128,12 +133,13 @@ export class TclDiagnosticProvider {
     private checkCommonIssues(document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): void {
         const text = document.getText();
         const lines = text.split('\n');
+        const insideString = computeMultilineStringLines(lines);
 
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum].trim();
             
-            // Skip comments and empty lines
-            if (line.startsWith('#') || line.length === 0) continue;
+            // Skip comments, empty lines, and lines inside multiline strings
+            if (line.startsWith('#') || line.length === 0 || insideString[lineNum]) continue;
 
             // Warn on missing space before brace (e.g., if{ ... })
             const missingSpaceBeforeBrace = /\b(if|while|for|foreach|switch)\{/;

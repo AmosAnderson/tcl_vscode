@@ -42,6 +42,7 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 - **Cleanup**: Extracted shared `escapeTclString` utility to `tclUtils.ts`
 - **Cleanup**: Removed duplicate `tcl.runBuildTask` from `taskProvider`
 - **Cleanup**: Wired `tcl.runTests` to `testing.runAll` instead of a stub message
+- **Correctness**: Fixed multiline strings being incorrectly flagged as "Unclosed string literal" — string state now persists across lines in both diagnostic and lint providers
 
 ### Changed
 - **Commands**: Expanded TCL command database from 251 to 827 unique commands covering core subcommands, math functions, Tk operations, TclOO, Tcllib, thread, TDBC, and Expect extended commands

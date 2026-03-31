@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { countBackslashes } from '../utils/tclUtils';
+import { countBackslashes, computeMultilineStringLines } from '../utils/tclUtils';
 
 export class TclLintProvider {
     private diagnosticCollection: vscode.DiagnosticCollection;
@@ -24,23 +24,25 @@ export class TclLintProvider {
         const diagnostics: vscode.Diagnostic[] = [];
         const text = document.getText();
         const lines = text.split('\n');
+        const insideString = computeMultilineStringLines(lines);
 
-        this.checkExprBracing(lines, diagnostics, config);
-        this.checkMissingSwitchDefault(text, lines, diagnostics);
-        this.checkCatchWithoutVariable(lines, diagnostics);
+        this.checkExprBracing(lines, diagnostics, config, insideString);
+        this.checkMissingSwitchDefault(text, lines, diagnostics, insideString);
+        this.checkCatchWithoutVariable(lines, diagnostics, insideString);
         this.checkLineLength(lines, diagnostics, config);
-        this.checkDeprecatedCommands(lines, diagnostics);
+        this.checkDeprecatedCommands(lines, diagnostics, insideString);
         this.checkGlobalVariableShorthand(text, lines, diagnostics);
 
         this.diagnosticCollection.set(document.uri, diagnostics);
     }
 
-    private checkExprBracing(lines: string[], diagnostics: vscode.Diagnostic[], config: vscode.WorkspaceConfiguration): void {
+    private checkExprBracing(lines: string[], diagnostics: vscode.Diagnostic[], config: vscode.WorkspaceConfiguration, insideString: boolean[]): void {
         if (!config.get<boolean>('lint.exprBracing', true)) {
             return;
         }
 
         for (let i = 0; i < lines.length; i++) {
+            if (insideString[i]) continue;
             const line = lines[i];
             const trimmed = line.trim();
 
@@ -67,9 +69,10 @@ export class TclLintProvider {
         }
     }
 
-    private checkMissingSwitchDefault(text: string, lines: string[], diagnostics: vscode.Diagnostic[]): void {
+    private checkMissingSwitchDefault(text: string, lines: string[], diagnostics: vscode.Diagnostic[], insideString: boolean[]): void {
         // Find switch statements and check for default clause
         for (let i = 0; i < lines.length; i++) {
+            if (insideString[i]) continue;
             const line = lines[i];
             const trimmed = line.trim();
 
@@ -130,8 +133,9 @@ export class TclLintProvider {
         }
     }
 
-    private checkCatchWithoutVariable(lines: string[], diagnostics: vscode.Diagnostic[]): void {
+    private checkCatchWithoutVariable(lines: string[], diagnostics: vscode.Diagnostic[], insideString: boolean[]): void {
         for (let i = 0; i < lines.length; i++) {
+            if (insideString[i]) continue;
             const line = lines[i];
             const trimmed = line.trim();
 
@@ -181,7 +185,7 @@ export class TclLintProvider {
         }
     }
 
-    private checkDeprecatedCommands(lines: string[], diagnostics: vscode.Diagnostic[]): void {
+    private checkDeprecatedCommands(lines: string[], diagnostics: vscode.Diagnostic[], insideString: boolean[]): void {
         const deprecated: { pattern: RegExp; message: string }[] = [
             { pattern: /\bstring\s+bytelength\b/, message: "'string bytelength' is deprecated since TCL 8.6 — use 'string length' with encoding" },
             { pattern: /\bstring\s+wordend\b/, message: "'string wordend' is deprecated — use 'tcl_wordBreakAfter' or regexp" },
@@ -189,6 +193,7 @@ export class TclLintProvider {
         ];
 
         for (let i = 0; i < lines.length; i++) {
+            if (insideString[i]) continue;
             const line = lines[i];
             const trimmed = line.trim();
 
