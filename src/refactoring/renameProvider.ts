@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
+import { SymbolTableCache } from '../analysis/symbolTableCache';
 
 export class TclRenameProvider implements vscode.RenameProvider {
+    
+    constructor(private symbolTableCache?: SymbolTableCache) {}
     
     public async provideRenameEdits(
         document: vscode.TextDocument,
@@ -309,6 +312,60 @@ export class TclRenameProvider implements vscode.RenameProvider {
         newName: string,
         edit: vscode.WorkspaceEdit
     ): Promise<void> {
+
+        // Use scope-aware symbol table when available for precise scoping
+        if (this.symbolTableCache) {
+            const table = this.symbolTableCache.getOrCreate(document);
+            // Find the position of the cursor's variable in the document to determine scope
+            const scopedRanges = this.findScopedVariableRanges(document, table, oldName);
+            if (scopedRanges.length > 0) {
+                for (const range of scopedRanges) {
+                    edit.replace(document.uri, range, newName);
+                }
+                return;
+            }
+        }
+
+        // Fallback: scan the current file with regex patterns
+        this.renameVariableFallback(document, oldName, newName, edit);
+    }
+
+    /**
+     * Use the symbol table to find all ranges for a variable within its scope.
+     * Collects definition + references from the symbol entry.
+     */
+    private findScopedVariableRanges(
+        document: vscode.TextDocument,
+        table: import('../analysis/symbolTable').DocumentSymbolTable,
+        varName: string
+    ): vscode.Range[] {
+        const ranges: vscode.Range[] = [];
+        this.collectScopedRanges(table.getRoot(), varName, ranges);
+        return ranges;
+    }
+
+    private collectScopedRanges(
+        scope: import('../analysis/symbolTable').ScopeNode,
+        varName: string,
+        ranges: vscode.Range[]
+    ): void {
+        for (const sym of scope.symbols) {
+            if (sym.name === varName) {
+                ranges.push(sym.range);
+                ranges.push(...sym.references);
+            }
+        }
+        for (const child of scope.children) {
+            this.collectScopedRanges(child, varName, ranges);
+        }
+    }
+
+    private renameVariableFallback(
+        document: vscode.TextDocument,
+        oldName: string,
+        newName: string,
+        edit: vscode.WorkspaceEdit
+    ): void {
 
         // For variables, we typically only rename within the current file/scope
         // unless it's a global variable

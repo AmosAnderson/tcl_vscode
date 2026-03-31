@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
 import { findMatchingBrace } from '../utils/tclUtils';
+import { SymbolTableCache } from '../analysis/symbolTableCache';
 
 export class TclHoverProvider implements vscode.HoverProvider {
+
+    constructor(private symbolTableCache?: SymbolTableCache) {}
+
     provideHover(
         document: vscode.TextDocument,
         position: vscode.Position,
@@ -41,7 +45,30 @@ export class TclHoverProvider implements vscode.HoverProvider {
             return new vscode.Hover(markdown, wordRange);
         }
 
-        // Check for variables
+        // Check for variables — prefer scope-aware symbol table info
+        if (this.symbolTableCache) {
+            const symbolEntry = this.symbolTableCache.getOrCreate(document).getSymbolAt(position);
+            if (symbolEntry && (symbolEntry.kind === 'variable' || symbolEntry.kind === 'parameter')) {
+                const markdown = new vscode.MarkdownString();
+                markdown.appendCodeblock(`$${word}`, 'tcl');
+
+                const scopeLabels: Record<string, string> = {
+                    'local': 'local variable',
+                    'global': 'global variable',
+                    'namespace': 'namespace variable',
+                    'parameter': 'procedure parameter',
+                    'upvar': symbolEntry.aliasOf
+                        ? `upvar alias of \`${symbolEntry.aliasOf}\``
+                        : 'upvar alias'
+                };
+                const label = scopeLabels[symbolEntry.scope] || symbolEntry.scope;
+                markdown.appendText(`**Scope:** ${label}`);
+
+                return new vscode.Hover(markdown, wordRange);
+            }
+        }
+
+        // Fallback: basic variable info from backward search
         const varInfo = this.getVariableInfo(document, position, word);
         if (varInfo) {
             const markdown = new vscode.MarkdownString();

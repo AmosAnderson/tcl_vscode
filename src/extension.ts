@@ -15,6 +15,7 @@ import { TclLintProvider } from './providers/lintProvider';
 import { TclRenameProvider } from './refactoring/renameProvider';
 import { TclExtractProvider } from './refactoring/extractProvider';
 import { TclNamespaceExtractProvider } from './refactoring/namespaceProvider';
+import { SymbolTableCache } from './analysis/symbolTableCache';
 import { TclInterpreterManager } from './tools/interpreterManager';
 import { TclPackageManager } from './tools/packageManager';
 import { TclProjectTemplates } from './tools/projectTemplates';
@@ -73,11 +74,16 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerCodeActionsProvider('tcl', codeActionProvider)
     );
 
+    // Initialize scope-aware symbol table cache
+    const symbolTableCache = new SymbolTableCache();
+    symbolTableCache.registerListeners(context);
+    context.subscriptions.push(symbolTableCache);
+
     // Register IntelliSense providers
     const completionProvider = new TclCompletionItemProvider();
-    const hoverProvider = new TclHoverProvider();
+    const hoverProvider = new TclHoverProvider(symbolTableCache);
     const definitionProvider = new TclDefinitionProvider();
-    const referenceProvider = new TclReferenceProvider();
+    const referenceProvider = new TclReferenceProvider(symbolTableCache);
     const documentSymbolProvider = new TclDocumentSymbolProvider();
     const workspaceSymbolProvider = new TclWorkspaceSymbolProvider();
     const signatureHelpProvider = new TclSignatureHelpProvider();
@@ -190,7 +196,7 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     // Register Phase 5 features: Refactoring
-    const renameProvider = new TclRenameProvider();
+    const renameProvider = new TclRenameProvider(symbolTableCache);
     const extractProvider = new TclExtractProvider();
     
     context.subscriptions.push(
@@ -239,6 +245,7 @@ export async function activate(context: vscode.ExtensionContext) {
             await packageManager.initialize();
             await dependencyManager.initialize();
             taskProvider.register(context);
+            registerRunCommands(context, interpreterManager);
 
             phase6Initialized = true;
 

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { escapeRegex } from '../utils/tclUtils';
 import { WorkspaceIndex } from '../analysis/workspaceIndex';
+import { SymbolTableCache } from '../analysis/symbolTableCache';
 
 export class TclDefinitionProvider implements vscode.DefinitionProvider {
     async provideDefinition(
@@ -86,6 +87,9 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
 }
 
 export class TclReferenceProvider implements vscode.ReferenceProvider {
+
+    constructor(private symbolTableCache?: SymbolTableCache) {}
+
     async provideReferences(
         document: vscode.TextDocument,
         position: vscode.Position,
@@ -100,9 +104,24 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
         const word = document.getText(wordRange);
         const escapedWord = escapeRegex(word);
         const references: vscode.Location[] = [];
-
-        // Check if we're on a procedure definition
         const line = document.lineAt(position.line).text;
+
+        // Determine if this is a variable reference
+        const isVariable = (wordRange.start.character > 0 && line[wordRange.start.character - 1] === '$')
+            || /\bset\s+/.test(line.substring(0, wordRange.start.character + word.length))
+            || /\b(global|variable|upvar)\s+/.test(line);
+
+        // For variable references, use scope-aware symbol table
+        if (isVariable && this.symbolTableCache) {
+            const table = this.symbolTableCache.getOrCreate(document);
+            const scopedRanges = table.getScopedReferences(word, position);
+            if (scopedRanges.length > 0) {
+                return scopedRanges.map(range => new vscode.Location(document.uri, range));
+            }
+        }
+
+        // Fall back to procedure reference search
+        // Check if we're on a procedure definition
         const procDefMatch = line.match(new RegExp(`\\bproc\\s+(${escapedWord})\\s*{`));
         
         if (procDefMatch) {
