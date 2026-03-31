@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS, STRING_SUBCOMMANDS, TCL_SNIPPETS } from '../data/tclCommands';
 import { findMatchingBrace } from '../utils/tclUtils';
+import { WorkspaceIndex } from '../analysis/workspaceIndex';
 
 export class TclCompletionItemProvider implements vscode.CompletionItemProvider {
     private procedureCache: Map<string, vscode.CompletionItem[]> = new Map();
@@ -54,8 +55,9 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         // Add built-in commands
         completions.push(...this.getBuiltinCommandCompletions());
 
-        // Add procedures from current file
+        // Add procedures from current file and workspace index
         completions.push(...this.getProcedureCompletions(document));
+        completions.push(...this.getWorkspaceProcedureCompletions(document));
 
         // Add snippets
         completions.push(...this.getSnippetCompletions());
@@ -248,24 +250,76 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
         return null;
     }
 
+    /** Return procedure completions from other workspace files via the index. */
+    private getWorkspaceProcedureCompletions(currentDocument: vscode.TextDocument): vscode.CompletionItem[] {
+        const index = WorkspaceIndex.getInstance();
+        const currentUri = currentDocument.uri.toString();
+        const seen = new Set<string>();
+
+        // Avoid duplicating names already returned by getProcedureCompletions for the current file
+        const localProcs = this.procedureCache.get(currentUri);
+        if (localProcs) {
+            for (const item of localProcs) {
+                seen.add(item.label.toString());
+            }
+        }
+
+        const items: vscode.CompletionItem[] = [];
+        for (const proc of index.getProcedures()) {
+            if (proc.uri.toString() === currentUri) {
+                continue;
+            }
+            if (seen.has(proc.name)) {
+                continue;
+            }
+            seen.add(proc.name);
+
+            const item = new vscode.CompletionItem(proc.name, vscode.CompletionItemKind.Function);
+            const args = proc.params.join(' ');
+            item.detail = `proc ${proc.name} {${args}}`;
+            item.documentation = new vscode.MarkdownString(
+                `Defined in ${vscode.workspace.asRelativePath(proc.uri)}`
+            );
+
+            if (proc.params.length > 0) {
+                const filtered = proc.params.filter(a => a !== 'args');
+                if (filtered.length > 0) {
+                    const snippetArgs = filtered.map((arg, i) => `$\{${i + 1}:${arg}\}`).join(' ');
+                    item.insertText = new vscode.SnippetString(`${proc.name} ${snippetArgs}`);
+                } else {
+                    item.insertText = proc.name;
+                }
+            } else {
+                item.insertText = proc.name;
+            }
+
+            items.push(item);
+        }
+        return items;
+    }
+
     private getNamespaceCompletions(document: vscode.TextDocument, linePrefix: string): vscode.CompletionItem[] {
         const completions: vscode.CompletionItem[] = [];
-        const text = document.getText();
         
         // Extract namespace prefix
         const nsMatch = linePrefix.match(/((?:::)?(?:[a-zA-Z_][a-zA-Z0-9_]*::)*)/);
         const nsPrefix = nsMatch ? nsMatch[1] : '';
 
-        // Find namespace definitions
-        const nsRegex = /namespace\s+eval\s+((?:::)?[a-zA-Z_][a-zA-Z0-9_:]*)/g;
+        // Collect from workspace index and current document
         const namespaces = new Set<string>();
-        let match;
 
+        for (const ns of WorkspaceIndex.getInstance().getNamespaces()) {
+            namespaces.add(ns.name);
+        }
+
+        // Also scan current document to catch any not yet indexed
+        const text = document.getText();
+        const nsRegex = /namespace\s+eval\s+((?:::)?[a-zA-Z_][a-zA-Z0-9_:]*)/g;
+        let match;
         while ((match = nsRegex.exec(text)) !== null) {
             namespaces.add(match[1]);
         }
 
-        // Add namespace completions
         namespaces.forEach(ns => {
             if (ns.startsWith(nsPrefix)) {
                 const item = new vscode.CompletionItem(ns, vscode.CompletionItemKind.Module);

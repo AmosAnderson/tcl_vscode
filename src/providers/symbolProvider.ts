@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { escapeRegex } from '../utils/tclUtils';
+import { WorkspaceIndex } from '../analysis/workspaceIndex';
 
 export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     provideDocumentSymbols(
@@ -198,73 +198,32 @@ export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider 
 export class TclWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
     async provideWorkspaceSymbols(
         query: string,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): Promise<vscode.SymbolInformation[]> {
+        const index = WorkspaceIndex.getInstance();
         const symbols: vscode.SymbolInformation[] = [];
-        const escapedQuery = escapeRegex(query);
-        
-        // Find all TCL files in workspace
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-        
-        for (const file of files) {
-            if (token.isCancellationRequested) {
-                break;
-            }
 
-            const document = await vscode.workspace.openTextDocument(file);
-            const text = document.getText();
-            
-            // Search for procedures matching the query
-            const procRegex = new RegExp(`\\bproc\\s+(\\w*${escapedQuery}\\w*)\\s*\\{`, 'gi');
-            let match;
-
-            while ((match = procRegex.exec(text)) !== null) {
-                const procName = match[1];
-                const line = document.positionAt(match.index).line;
-
-                // Try to extract args if they're on the same line
-                const lineText = document.lineAt(line).text;
-                const argsMatch = lineText.match(/\bproc\s+\w+\s*\{([^}]*)\}/);
-                const args = argsMatch ? argsMatch[1].trim() : '...';
-
-                const location = new vscode.Location(
-                    file,
-                    new vscode.Position(line, 0)
-                );
-
-                const symbol = new vscode.SymbolInformation(
-                    procName,
-                    vscode.SymbolKind.Function,
-                    args ? `{${args}}` : '',
-                    location
-                );
-
-                symbols.push(symbol);
-            }
-            
-            // Search for namespaces matching the query
-            const nsRegex = new RegExp(`namespace\\s+eval\\s+(\\w*${escapedQuery}\\w*)`, 'gi');
-            
-            while ((match = nsRegex.exec(text)) !== null) {
-                const nsName = match[1];
-                const line = document.positionAt(match.index).line;
-                
-                const location = new vscode.Location(
-                    file,
-                    new vscode.Position(line, 0)
-                );
-                
-                const symbol = new vscode.SymbolInformation(
-                    nsName,
-                    vscode.SymbolKind.Namespace,
-                    'namespace',
-                    location
-                );
-                
-                symbols.push(symbol);
-            }
+        for (const proc of index.getProcedures(query)) {
+            const location = new vscode.Location(proc.uri, new vscode.Position(proc.line, 0));
+            const args = proc.params.length > 0 ? `{${proc.params.join(' ')}}` : '';
+            symbols.push(new vscode.SymbolInformation(
+                proc.name,
+                vscode.SymbolKind.Function,
+                args,
+                location
+            ));
         }
-        
+
+        for (const ns of index.getNamespaces(query)) {
+            const location = new vscode.Location(ns.uri, new vscode.Position(ns.line, 0));
+            symbols.push(new vscode.SymbolInformation(
+                ns.name,
+                vscode.SymbolKind.Namespace,
+                'namespace',
+                location
+            ));
+        }
+
         return symbols;
     }
 }

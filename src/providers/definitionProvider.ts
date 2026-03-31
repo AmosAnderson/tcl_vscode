@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { escapeRegex } from '../utils/tclUtils';
+import { WorkspaceIndex } from '../analysis/workspaceIndex';
 
 export class TclDefinitionProvider implements vscode.DefinitionProvider {
     async provideDefinition(
@@ -55,54 +56,31 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
     }
 
     private async findProcedureInWorkspace(procName: string): Promise<vscode.Location[]> {
-        const locations: vscode.Location[] = [];
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-        const name = escapeRegex(procName);
-
-        for (const file of files) {
-            try {
-                const document = await vscode.workspace.openTextDocument(file);
-                const text = document.getText();
-                const procRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{[^}]*\\}\\s*\\{`, 'g');
-                let match;
-
-                while ((match = procRegex.exec(text)) !== null) {
-                    const position = document.positionAt(match.index);
-                    const range = new vscode.Range(position, position);
-                    locations.push(new vscode.Location(file, range));
-                }
-            } catch (error) {
-                // Skip files that can't be opened
-                continue;
-            }
-        }
-        
-        return locations;
+        const index = WorkspaceIndex.getInstance();
+        const lowerName = procName.toLowerCase();
+        return index.getProcedures().filter(p => {
+            // Exact match on name or qualified name
+            return p.name.toLowerCase() === lowerName ||
+                   p.qualifiedName.toLowerCase() === lowerName ||
+                   p.qualifiedName.toLowerCase().endsWith('::' + lowerName);
+        }).map(p => {
+            const position = new vscode.Position(p.line, 0);
+            return new vscode.Location(p.uri, new vscode.Range(position, position));
+        });
     }
 
     private async findNamespaceInWorkspace(nsName: string): Promise<vscode.Location | null> {
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-        
-        const escaped = escapeRegex(nsName);
-        for (const file of files) {
-            try {
-                const document = await vscode.workspace.openTextDocument(file);
-                const text = document.getText();
-                
-                const nsRegex = new RegExp(`namespace\\s+eval\\s+(::)?${escaped}\\s*{`, 'g');
-                const match = nsRegex.exec(text);
-                
-                if (match) {
-                    const position = document.positionAt(match.index);
-                    const range = new vscode.Range(position, position);
-                    return new vscode.Location(file, range);
-                }
-            } catch (error) {
-                // Skip files that can't be opened
-                continue;
-            }
+        const index = WorkspaceIndex.getInstance();
+        const lowerName = nsName.toLowerCase();
+        const match = index.getNamespaces().find(n => {
+            return n.name.toLowerCase() === lowerName ||
+                   n.qualifiedName.toLowerCase() === '::' + lowerName ||
+                   n.qualifiedName.toLowerCase() === lowerName;
+        });
+        if (match) {
+            const position = new vscode.Position(match.line, 0);
+            return new vscode.Location(match.uri, new vscode.Range(position, position));
         }
-        
         return null;
     }
 }
@@ -151,7 +129,8 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
 
     private async findProcedureReferences(procName: string): Promise<vscode.Location[]> {
         const references: vscode.Location[] = [];
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
+        const index = WorkspaceIndex.getInstance();
+        const files = index.getIndexedFiles();
         const escaped = escapeRegex(procName);
 
         for (const file of files) {

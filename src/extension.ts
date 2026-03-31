@@ -14,12 +14,15 @@ import { TclCoverageProvider } from './testing/coverageProvider';
 import { TclLintProvider } from './providers/lintProvider';
 import { TclRenameProvider } from './refactoring/renameProvider';
 import { TclExtractProvider } from './refactoring/extractProvider';
+import { TclNamespaceExtractProvider } from './refactoring/namespaceProvider';
 import { TclInterpreterManager } from './tools/interpreterManager';
 import { TclPackageManager } from './tools/packageManager';
 import { TclProjectTemplates } from './tools/projectTemplates';
 import { TclTaskProviderManager } from './tools/taskProvider';
 import { TclDependencyManager } from './tools/dependencyManager';
+import { registerRunCommands } from './tools/runCommands';
 import { cleanupTempTclFiles } from './utils/tclUtils';
+import { WorkspaceIndex } from './analysis/workspaceIndex';
 
 // Track disposable providers so deactivate() can clean them up
 let activeTestProvider: TclTestProvider | undefined;
@@ -107,6 +110,11 @@ export async function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerWorkspaceSymbolProvider(workspaceSymbolProvider)
     );
 
+    // Initialize workspace-wide symbol index (runs in background, won't block activation)
+    const workspaceIndex = WorkspaceIndex.getInstance();
+    workspaceIndex.initialize();
+    context.subscriptions.push(workspaceIndex);
+
     // Register format document command
     context.subscriptions.push(
         vscode.commands.registerCommand('tcl.formatDocument', () => {
@@ -191,12 +199,23 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.languages.registerCodeActionsProvider('tcl', extractProvider, {
-            providedCodeActionKinds: [vscode.CodeActionKind.RefactorExtract]
+            providedCodeActionKinds: [
+                vscode.CodeActionKind.RefactorExtract,
+                vscode.CodeActionKind.RefactorInline
+            ]
+        })
+    );
+
+    const namespaceExtractProvider = new TclNamespaceExtractProvider();
+    context.subscriptions.push(
+        vscode.languages.registerCodeActionsProvider('tcl', namespaceExtractProvider, {
+            providedCodeActionKinds: TclNamespaceExtractProvider.providedCodeActionKinds
         })
     );
 
     // Register refactoring commands
     extractProvider.registerCommands(context);
+    namespaceExtractProvider.registerCommands(context);
 
     // Register Phase 6 features: Integration and Tools (lazy initialization)
     let interpreterManager: TclInterpreterManager | undefined;
