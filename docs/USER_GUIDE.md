@@ -10,7 +10,7 @@
 ## Getting Started
 
 ### Requirements
-- Visual Studio Code **1.106.1** or higher
+- Visual Studio Code **1.110.0** or higher
 - Node.js **18 LTS** (only required for local development workflows such as cloning and running `npm install`)
 - A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing commands
 
@@ -39,7 +39,7 @@ After installation, the extension automatically activates when you open any TCL 
 - String interpolation and escape sequences
 
 ### ✨ IntelliSense
-- **Auto-completion**: 250+ built-in TCL commands with signatures
+- **Auto-completion**: 800+ built-in TCL commands with signatures
 - **Hover Information**: Command documentation and variable values
 - **Signature Help**: Parameter hints while typing, with active-argument highlighting
 - **Go to Definition**: Navigate to procedure definitions (F12)
@@ -56,10 +56,11 @@ After installation, the extension automatically activates when you open any TCL 
 - Quick fixes for common issues
 
 ### 🐛 Debugging
-- Breakpoints and stepping
-- Variable inspection
+- Breakpoints (including conditional breakpoints and logpoints)
+- Variable inspection (with array expansion)
 - Call stack navigation
 - Integrated REPL
+- Run with interpreter / run with args
 
 ### 🧪 Testing
 - Test discovery and execution
@@ -71,6 +72,8 @@ After installation, the extension automatically activates when you open any TCL 
 - Extract procedure
 - Extract variable
 - Inline variable
+- Inline procedure
+- Extract to namespace
 
 ## Basic Usage
 
@@ -175,8 +178,9 @@ Example `launch.json`:
 
 #### Using Breakpoints
 1. Click in the gutter next to line numbers to set breakpoints
-2. Run debug configuration (F5)
-3. Use debug controls to step through code
+2. Right-click a breakpoint to add a condition or log message (logpoint)
+3. Run debug configuration (F5)
+4. Use debug controls to step through code
 
 ### Testing
 
@@ -211,6 +215,29 @@ Note: Built-in TCL commands cannot be renamed.
 2. Right-click → "Refactor" → "Extract Variable"
 3. Enter variable name
 4. Expression is assigned to variable
+
+#### Inline Procedure
+1. Place cursor on a procedure call
+2. Run "TCL: Inline Procedure"
+3. The call is replaced with the procedure body
+
+#### Extract to Namespace
+1. Select code block
+2. Run "TCL: Extract to Namespace"
+3. Enter namespace name
+4. Code is wrapped in `namespace eval`
+
+### Running Scripts
+
+#### Run with Interpreter
+1. Run "TCL: Run with Interpreter"
+2. Select from discovered interpreters
+3. Script runs with the chosen interpreter
+
+#### Run with Args
+1. Run "TCL: Run with Args"
+2. Enter command-line arguments
+3. Script runs with the provided arguments
 
 ### Project Management
 

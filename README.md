@@ -4,7 +4,7 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 
 ## Requirements
 
-- VS Code **1.109.0** or newer
+- VS Code **1.110.0** or newer
 - Node.js **18 LTS** or newer (for local development only)
 - A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing
 
@@ -36,7 +36,11 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 
 ### Debugging and Testing
 - **Debug Adapter**: Launch and debug TCL scripts with breakpoints, step in/out/over, call stack inspection, variable viewing, and expression evaluation via a TCP socket protocol
+- **Conditional Breakpoints**: Attach boolean expressions to breakpoints — execution pauses only when the condition is true
+- **Logpoints**: Breakpoints that log interpolated messages to the debug console without pausing
+- **Array Expansion**: Inspect array variables in the debug variables panel
 - **REPL Integration**: Interactive TCL console, evaluate selection, run current file
+- **Run Commands**: Execute scripts with a chosen interpreter or custom arguments
 - **Testing Support**: Test discovery, execution, and coverage analysis scaffolding
 
 ### Linting
@@ -49,7 +53,7 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 - Quick fixes available for expr bracing and catch-without-variable warnings
 
 ### Snippets
-- 25+ snippets for Tk widgets, Expect automation, TclOO classes, and common patterns
+- 26 snippets for Tk widgets, Expect automation, TclOO classes, and common patterns
 - Prefixed by category: `tk*`, `expect*`, `trycatch`, `oo_class`, `dict_iterate`, `file_read`, etc.
 
 ### Refactoring
@@ -57,6 +61,8 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 - **Extract Procedure**: Extract selected code into a new procedure
 - **Extract Variable**: Extract expression into a variable
 - **Inline Variable**: Replace variable uses with its value
+- **Inline Procedure**: Replace a procedure call with the body of its definition
+- **Extract to Namespace**: Move selected code into a `namespace eval` block
 
 ### Advanced Features
 - Interpreter management (system, ActiveTcl, TclKit, versions 8.4–9.0)
@@ -130,14 +136,19 @@ Press `F5` to launch a new VS Code window with the extension loaded.
 tcl_vscode/
 ├── src/
 │   ├── extension.ts          # Extension entry point
+│   ├── analysis/              # Semantic analysis
+│   │   ├── symbolTable.ts     # Scope-aware symbol table
+│   │   ├── symbolTableCache.ts
+│   │   └── workspaceIndex.ts  # Workspace-wide symbol index
 │   ├── data/                  # TCL command definitions
 │   ├── formatter/             # Code formatting
 │   ├── providers/             # IntelliSense, diagnostics, linting
 │   ├── debug/                 # Debug adapter + TCL debug server
 │   │   └── scripts/           # debugServer.tcl (shipped with extension)
-│   ├── refactoring/           # Rename/extract providers
+│   ├── refactoring/           # Rename/extract/inline/namespace providers
 │   ├── testing/               # Test discovery/coverage
-│   └── tools/                 # Interpreter/package/dependency management
+│   ├── tools/                 # Interpreter/package/dependency/run management
+│   └── utils/                 # Shared utilities (tclUtils.ts)
 ├── snippets/
 │   └── tcl.json               # TCL/Tk/Expect/TclOO snippets
 ├── syntaxes/

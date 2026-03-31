@@ -26,7 +26,7 @@ We are committed to providing a welcoming and inclusive environment. Please:
 ### Prerequisites
 - Node.js (v18 LTS or higher)
 - npm (v9 or higher)
-- VS Code 1.109.0 or newer
+- VS Code 1.110.0 or newer
 - Git
 - TCL interpreter (for testing)
 
@@ -73,6 +73,10 @@ npm run watch
 tcl-vscode/
 ├── src/                    # Source code
 │   ├── extension.ts        # Extension entry point
+│   ├── analysis/           # Semantic analysis
+│   │   ├── symbolTable.ts
+│   │   ├── symbolTableCache.ts
+│   │   └── workspaceIndex.ts
 │   ├── data/              # TCL command definitions
 │   │   └── tclCommands.ts
 │   ├── debug/             # Debugging support
@@ -94,21 +98,25 @@ tcl-vscode/
 │   │   └── symbolProvider.ts
 │   ├── refactoring/       # Refactoring features
 │   │   ├── extractProvider.ts
+│   │   ├── namespaceProvider.ts
 │   │   └── renameProvider.ts
 │   ├── testing/           # Test support
 │   │   ├── coverageProvider.ts
 │   │   └── testProvider.ts
-│   └── tools/             # External tools
-│       ├── dependencyManager.ts
-│       ├── interpreterManager.ts
-│       ├── packageManager.ts
-│       └── projectTemplates.ts
+│   ├── tools/             # External tools
+│   │   ├── dependencyManager.ts
+│   │   ├── interpreterManager.ts
+│   │   ├── packageManager.ts
+│   │   ├── projectTemplates.ts
+│   │   ├── runCommands.ts
+│   │   └── taskProvider.ts
+│   └── utils/             # Shared utilities
+│       └── tclUtils.ts
 ├── snippets/              # VS Code snippet definitions
 │   └── tcl.json
 ├── syntaxes/              # Syntax definitions
 │   └── tcl.tmLanguage.json
 ├── docs/                  # Documentation
-├── test/                  # Test files
 ├── package.json           # Extension manifest
 └── tsconfig.json          # TypeScript config
 ```

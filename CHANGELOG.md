@@ -2,6 +2,51 @@
 
 All notable changes to the "TCL Syntax" extension will be documented in this file.
 
+## [0.7.0] - 2026-03-31
+
+### Added
+- **Debugging**: Conditional breakpoint support — attach boolean expressions to breakpoints; execution pauses only when the condition evaluates to true
+- **Debugging**: Logpoint support — breakpoints that log interpolated messages (with `{expression}` placeholders) to the debug console without pausing
+- **Debugging**: Array variable expansion in the debug variables panel
+- **Analysis**: Workspace-wide symbol index (`src/analysis/workspaceIndex.ts`) — scans all `.tcl/.tk/.tm/.test` files at startup, watches for file changes, and debounces live re-indexing (500ms)
+- **Analysis**: Scope-aware symbol table (`src/analysis/symbolTable.ts`) — parses documents to build a scope tree with proper variable scoping (local, global, namespace, parameter, upvar)
+- **Refactoring**: Extract to Namespace — move selected code into a new `namespace eval` block (`src/refactoring/namespaceProvider.ts`)
+- **Refactoring**: Inline Procedure — replace a procedure call with the body of its definition, safely handling brace quoting and parameter substitution
+- **Commands**: Run with Interpreter — execute the current file with a selected TCL interpreter (`tcl.runWithInterpreter`)
+- **Commands**: Run with Args — execute the current file with custom arguments (`tcl.runWithArgs`)
+- **Snippets**: Added `proc` and `namespace_eval` snippets (24 → 26 total)
+
+### Improved
+- **Formatter**: Continuation line handling — lines ending with `\` (odd backslash count) indent subsequent continuation lines by one extra level
+- **Formatter**: Multi-line `expr` block tracking — detects `expr {` spanning multiple lines, preserves expression body without reformatting, and maintains consistent indentation
+- **Formatter**: Improved switch body alignment for both brace-style and dash-style (`switch -- $x`), with patterns at +1 indent and bodies at +2
+- **IntelliSense**: Completion provider now includes workspace procedure completions from the index and merges namespace completions from both the index and the current document
+- **IntelliSense**: Definition and workspace symbol providers query the workspace index instead of scanning files on every request
+- **Hover**: Shows scope information (parameter, upvar alias, etc.) when the symbol table has a match
+- **Rename**: Uses scoped references from the symbol table for variable renames, with graceful fallback to text-based matching
+- **Linting**: Refined lint checks for expression bracing, missing switch defaults, catch statements without variables, line length, deprecated commands, and global variable shorthand usage; improved diagnostic messages
+
+### Fixed
+- **Security**: Fixed command injection in `interpreterManager` by replacing `execAsync` with `execFileAsync`
+- **Security**: Fixed command injection in `runWithArgs` — all arguments are now shell-quoted
+- **Security**: REPL now warns on `exec`/`open|` in `evaluateSelection` and escapes file paths
+- **Robustness**: Fixed socket leak when `sendPendingBreakpoints` fails in the debug adapter
+- **Robustness**: Added 10-second timeout for debug port detection to prevent hanging
+- **Robustness**: Added workspace scoping warning for debug targets outside the workspace
+- **Robustness**: Orphaned temp TCL files are now cleaned up on activation and deactivation
+- **Robustness**: Implemented `deactivate()` to dispose providers holding child processes
+- **Robustness**: Validated `tclPath` exists before passing to REPL terminal
+- **Robustness**: SIGKILL fallback for orphaned test processes on timeout
+- **Robustness**: Fixed race condition in test provider timeout/close promise settlement
+- **Robustness**: Debug adapter cleanup now uses SIGTERM with SIGKILL fallback; nested force-kill timers cleared on all exit paths
+- **Cleanup**: Extracted shared `escapeTclString` utility to `tclUtils.ts`
+- **Cleanup**: Removed duplicate `tcl.runBuildTask` from `taskProvider`
+- **Cleanup**: Wired `tcl.runTests` to `testing.runAll` instead of a stub message
+
+### Changed
+- **Commands**: Expanded TCL command database from 251 to 827 unique commands covering core subcommands, math functions, Tk operations, TclOO, Tcllib, thread, TDBC, and Expect extended commands
+- **Engine**: Minimum VS Code version updated to 1.110.0
+
 ## [0.6.1] - 2026-03-12
 
 ### Fixed
@@ -184,4 +229,4 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 ---
 
 **Known Limitations:**
-- Formatter handles most cases but may need refinement for complex nested structures
+- Formatter handles most cases; complex nested structures, continuation lines, and multi-line `expr` are supported as of 0.7.0

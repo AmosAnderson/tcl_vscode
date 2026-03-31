@@ -124,7 +124,14 @@ Extension Entry Point (activate function)
 
 ### Data & Configuration
 - **tclCommands.ts** - 800+ TCL commands (base, additional, Tk, Expect)
-- **Configuration** - 10 user settings (format, diagnostics, paths)
+- **Configuration** - 15 user settings (format, diagnostics, lint, paths, packages)
+
+### Analysis Layer
+| Provider | File | Purpose |
+|----------|------|---------|
+| Symbol Table | symbolTable.ts | Scope-aware variable/proc scoping |
+| Symbol Table Cache | symbolTableCache.ts | Per-document cache with invalidation |
+| Workspace Index | workspaceIndex.ts | Workspace-wide proc/namespace index |
 
 ### IntelliSense Providers (5 providers)
 | Provider | File | Purpose |
@@ -158,7 +165,8 @@ Extension Entry Point (activate function)
 | Component | File | Purpose |
 |-----------|------|---------|
 | Rename | renameProvider.ts | Rename procedures/variables |
-| Extract | extractProvider.ts | Extract procedures/variables |
+| Extract | extractProvider.ts | Extract procedures/variables, inline procedure |
+| Namespace | namespaceProvider.ts | Extract to namespace refactoring |
 
 ### Tools (Phase 6 - Lazy Loaded)
 | Component | File | Purpose |
@@ -168,6 +176,7 @@ Extension Entry Point (activate function)
 | Dependency Mgr | dependencyManager.ts | Track project dependencies |
 | Templates | projectTemplates.ts | Project scaffolding |
 | Tasks | taskProvider.ts | VS Code task integration |
+| Run Commands | runCommands.ts | Run with interpreter/args |
 
 ---
 
@@ -226,37 +235,48 @@ The extension is built on these 10 principles:
 ```
 src/
 ├── extension.ts              # Main entry point and activation
+├── analysis/                 # Semantic analysis
+│   ├── symbolTable.ts        # Scope-aware symbol table
+│   ├── symbolTableCache.ts   # Per-document cache with invalidation
+│   └── workspaceIndex.ts     # Workspace-wide symbol index
 ├── data/
 │   └── tclCommands.ts        # Central TCL knowledge base
-├── providers/                # IntelliSense providers (6 files)
+├── providers/                # IntelliSense providers (7 files)
 │   ├── completionProvider.ts
 │   ├── symbolProvider.ts
 │   ├── definitionProvider.ts
 │   ├── hoverProvider.ts
 │   ├── diagnosticProvider.ts
+│   ├── lintProvider.ts
 │   └── codeActionProvider.ts
 ├── formatter/                # Formatting (2 files)
 │   ├── formattingProvider.ts
 │   └── tclFormatter.ts
-├── debug/                    # Debug & REPL (3 files)
+├── debug/                    # Debug & REPL (3 files + scripts)
 │   ├── debugAdapterFactory.ts
 │   ├── tclDebugAdapter.ts
-│   └── tclREPL.ts
+│   ├── tclREPL.ts
+│   └── scripts/
+│       └── debugServer.tcl
 ├── testing/                  # Testing & coverage (2 files)
 │   ├── testProvider.ts
 │   └── coverageProvider.ts
-├── refactoring/              # Refactoring (2 files)
+├── refactoring/              # Refactoring (3 files)
 │   ├── renameProvider.ts
-│   └── extractProvider.ts
-└── tools/                    # Tool managers (5 files)
-    ├── interpreterManager.ts
-    ├── packageManager.ts
-    ├── dependencyManager.ts
-    ├── projectTemplates.ts
-    └── taskProvider.ts
+│   ├── extractProvider.ts
+│   └── namespaceProvider.ts
+├── tools/                    # Tool managers (6 files)
+│   ├── interpreterManager.ts
+│   ├── packageManager.ts
+│   ├── dependencyManager.ts
+│   ├── projectTemplates.ts
+│   ├── taskProvider.ts
+│   └── runCommands.ts
+└── utils/                    # Shared utilities
+    └── tclUtils.ts
 ```
 
-Total: 19 implementation files organized in 8 directories
+Total: 25 implementation files organized in 9 directories
 
 ---
 
