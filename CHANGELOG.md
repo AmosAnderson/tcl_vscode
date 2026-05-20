@@ -4,6 +4,9 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 
 ## [0.7.1] - 2026-05-20
 
+### Fixed
+- **Correctness**: `computeMultilineStringLines` now honors `#` comments at command position, matching the behavior of `validateBasicSyntax`. Previously, a comment containing an odd number of unescaped `"` characters caused `checkCommonIssues` and the `expr`/`switch`/`catch`/deprecated-command lint checks to silently skip every subsequent line.
+
 ### Changed
 - **Dependencies**: Updated development tooling, including TypeScript 6.0.3, ESLint 10.4.0, `@typescript-eslint` 8.59.4, `@types/vscode` 1.120.0, and `@vscode/vsce` 3.9.1.
 - **Engine**: Minimum VS Code version updated to 1.120.0 to match the extension API typings.

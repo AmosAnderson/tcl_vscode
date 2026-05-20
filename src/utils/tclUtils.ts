@@ -139,6 +139,11 @@ export function findMatchingBrace(text: string, openIdx: number): number {
  * multiline double-quoted string.  Returns a boolean array of the same
  * length as `lines` where `true` means the line is a continuation of a
  * string that opened on a previous line.
+ *
+ * Comments are honored consistently with `TclDiagnosticProvider.validateBasicSyntax`:
+ * a `#` at command position (line start or after whitespace) while not inside a
+ * string terminates scanning for the remainder of that line, so quote characters
+ * inside comments do not toggle string state.
  */
 export function computeMultilineStringLines(lines: string[]): boolean[] {
     const result: boolean[] = new Array(lines.length).fill(false);
@@ -148,8 +153,15 @@ export function computeMultilineStringLines(lines: string[]): boolean[] {
         result[i] = inString;
         const line = lines[i];
         for (let c = 0; c < line.length; c++) {
-            if (line[c] === '"' && countBackslashes(line, c) % 2 === 0) {
+            const ch = line[c];
+            if (ch === '"' && countBackslashes(line, c) % 2 === 0) {
                 inString = !inString;
+                continue;
+            }
+            // A `#` at command position starts a comment that runs to end of line.
+            // Quote characters inside the comment must not toggle string state.
+            if (!inString && ch === '#' && (c === 0 || /\s/.test(line[c - 1]))) {
+                break;
             }
         }
     }
