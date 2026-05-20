@@ -5,7 +5,7 @@
   "version": "0.7.0",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
-    "vscode": "^1.110.0"
+    "vscode": "^1.120.0"
   },
   "categories": [
     "Programming Languages",
@@ -349,16 +349,16 @@
     "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^10.0.1",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^25.5.0",
-    "@types/vscode": "^1.110.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.0",
-    "@typescript-eslint/parser": "^8.57.0",
+    "@types/node": "^25.9.1",
+    "@types/vscode": "^1.120.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.4",
+    "@typescript-eslint/parser": "^8.59.4",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.7.1",
-    "eslint": "^10.0.3",
+    "@vscode/vsce": "^3.9.1",
+    "eslint": "^10.4.0",
     "glob": "^13.0.6",
     "mocha": "^11.7.5",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "overrides": {
     "diff": "^8.0.3",

@@ -1,27 +1,31 @@
-# Repository Guidelines
+# OpenCode Notes
 
-## Project Structure & Module Organization
-Core TypeScript lives in `src/`, where `extension.ts` wires formatter, provider, debug, refactoring, testing, and tool layers. Shared language data is in `src/data/`; grammars live in `syntaxes/`, defaults in `language-configuration.json`, and compiled JS in `out/`. TCL fixtures (`test.tcl`, `test_formatting.tcl`, `comprehensive_test.tcl`) mimic user scripts, while docs and assets stay under `docs/` and `images/`.
+## Commands
+- `npm install` restores the lockfile-pinned VS Code extension toolchain.
+- `npm run compile` runs `tsc -p ./` and then `copy-scripts`; use it before tests or packaging because it copies `src/debug/scripts/*.tcl` into `out/debug/scripts/`.
+- `npm run watch` only watches TypeScript; it does not run `copy-scripts`.
+- `npm run lint` is `eslint src --ext ts` using the flat config in `eslint.config.cjs`.
+- `npm test` runs `pretest` first, then `node ./out/test/runTest.js`, which launches VS Code through `@vscode/test-electron`.
+- There is no package script for a single test file. The suite runner loads every compiled `**/*.test.js` under `out/test/` and uses Mocha's TDD API (`suite`/`test`).
+- `npm run package` invokes `vsce package --allow-package-all-secrets --allow-package-env-file`; review what is included before using it.
 
-## Build, Test, and Development Commands
-- `npm install`: Install dependencies before any build.
-- `npm run compile`: TypeScript build via `tsc -p ./` followed by `copy-scripts` (copies `.tcl` debug server files to `out/`); run before shipping or tests.
-- `npm run watch`: Persistent compiler for fast feedback.
-- `npm run lint`: ESLint (`eslint.config.cjs`) on `src/**/*.ts`.
-- `npm test`: Invokes `pretest` (compile) and VS Code integration tests via `out/test/runTest.js`.
-- `npm run package`: Wraps `vsce package` to emit a `.vsix`; bump versions first.
+## Extension Shape
+- `package.json` is both the npm manifest and VS Code contribution manifest; update it when adding commands, settings, languages, snippets, or debug contributions.
+- Runtime entrypoint is `src/extension.ts`; compiled output goes to ignored `out/` with `main` set to `./out/extension.js`.
+- Provider registration is centralized in `src/extension.ts`. New language features should follow the existing provider classes instead of adding registration elsewhere.
+- Expensive tool integrations belong behind `ensurePhase6Initialized()` in `src/extension.ts`; interpreter, package, dependency, template, task, and run-command features are intentionally lazy.
+- TCL command metadata is centralized in `src/data/tclCommands.ts`; IntelliSense providers should consume it rather than duplicating command definitions.
+- Formatter logic is split: VS Code integration in `src/formatter/formattingProvider.ts`, pure formatting in `src/formatter/tclFormatter.ts`.
+- Diagnostics and style linting are separate: `TclDiagnosticProvider` handles structural checks, while `TclLintProvider` owns the `tcl-lint` diagnostic collection and code actions live in `TclCodeActionProvider`.
+- Debugging uses `src/debug/tclDebugAdapter.ts` plus the TCL-side server in `src/debug/scripts/debugServer.tcl` over TCP; keep the compile copy step in mind for any script changes.
 
-## Architecture & Activation Flow
-Version 0.7.0 targets VS Code 1.110+ and follows a layered architecture: data → providers → feature modules → entry point. Activation relies solely on built-in providers, so new language features should continue to integrate with those layers. Interpreter, package, dependency, template, and task managers boot lazily via `ensurePhase6Initialized()`; reuse that helper when adding commands to keep startup lean. The debug adapter communicates with a TCL-side debug server (`src/debug/scripts/debugServer.tcl`) over TCP sockets for breakpoints, stepping, and variable inspection. A separate lint provider (`src/providers/lintProvider.ts`) handles style checks independently from the structural diagnostic provider.
+## Environment And Tests
+- Development expects Node 18+ and VS Code 1.120+; TypeScript is strict, CommonJS, target ES2020.
+- Many runtime features shell out to `tclsh`; settings include `tcl.interpreter.path`, `tcl.repl.tclPath`, and `tcl.test.tclPath`.
+- `.vscode/launch.json` currently contains TCL debug configs only, not an Extension Development Host config; add/use an extension-host launch config before relying on F5 for TypeScript extension debugging.
+- Test files live in `src/test/`; root TCL fixtures such as `test.tcl`, `test_formatting.tcl`, and `comprehensive_test.tcl` are user-script samples.
 
-## Coding Style & Naming Conventions
-Use 4-space indentation, `camelCase` for functions/variables, `PascalCase` for classes/providers, and kebab-case branches (`feat/language-server`). Keep provider registration centralized in `extension.ts`, prefer early returns, and rely on `eslint.config.cjs` + TypeScript ESLint rules for formatting, imports, and VS Code API usage.
-
-## Testing Guidelines
-Tests live in `src/test/` and use Mocha + @vscode/test-electron (`*.test.ts`). Mirror feature layout, pull deterministic TCL samples from `suite/` or root fixtures, and reference them via workspace paths. Expand coverage for provider fallbacks and lazy-tool flows, and reuse `runTest.ts` helpers for activation.
-
-## Commit & Pull Request Guidelines
-History favors conventional commits (`feat:`, `chore:`, etc.); keep subjects under ~70 chars and ensure each commit compiles, lints, and tests. PRs need a concise summary, linked issue (`Fixes #123`), verification notes (`npm test`, manual repro), and screenshots/GIFs for visible UX changes. Call out breaking changes and update `README.md`, `CHANGELOG.md`, or `ARCHITECTURE_GUIDE.md` when behavior shifts.
-
-## Security & Configuration Tips
-Document custom `tclsh` paths in `README.md` and gate risky features behind existing `tcl.*` settings. Never commit secrets; rely on local VS Code settings for interpreter paths. When editing interpreter discovery, test on machines with and without `tclsh` available to verify fallback logic in `interpreterManager`.
+## Repo Conventions
+- Keep 4-space indentation in TypeScript to match existing code.
+- Do not edit generated `out/` output directly; regenerate with `npm run compile`.
+- Recent history mostly uses conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `chore:`).

@@ -4,7 +4,7 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 
 ## Requirements
 
-- VS Code **1.110.0** or newer
+- VS Code **1.120.0** or newer
 - Node.js **18 LTS** or newer (for local development only)
 - A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing
 

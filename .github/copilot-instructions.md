@@ -40,5 +40,5 @@ The extension activates in `src/extension.ts`, registering features in phases:
 - Conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`
 - Provider registration stays centralized in `extension.ts`
 - New language features follow the existing provider pattern and register in the appropriate phase block
-- TypeScript strict mode, compiled to ES2020, targeting VS Code 1.110+
+- TypeScript strict mode, compiled to ES2020, targeting VS Code 1.120+
 - ESLint with `@typescript-eslint` (flat config in `eslint.config.cjs`)
