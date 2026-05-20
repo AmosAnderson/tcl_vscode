@@ -2,6 +2,17 @@
 
 All notable changes to the "TCL Syntax" extension will be documented in this file.
 
+## [0.7.1] - 2026-05-20
+
+### Changed
+- **Dependencies**: Updated development tooling, including TypeScript 6.0.3, ESLint 10.4.0, `@typescript-eslint` 8.59.4, `@types/vscode` 1.120.0, and `@vscode/vsce` 3.9.1.
+- **Engine**: Minimum VS Code version updated to 1.120.0 to match the extension API typings.
+- **Testing**: Updated the Mocha suite runner import for compatibility with current TypeScript and Mocha typings.
+- **Documentation**: Replaced Claude Code-specific workspace guidance with compact OpenCode instructions and removed `CLAUDE.md`.
+
+### Security
+- **Dependencies**: Refreshed the lockfile and resolved reported npm audit vulnerabilities.
+
 ## [0.7.0] - 2026-03-31
 
 ### Added
