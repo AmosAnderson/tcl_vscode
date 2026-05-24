@@ -16,7 +16,7 @@ interface TclLaunchRequestArguments extends DebugProtocol.LaunchRequestArguments
 }
 
 interface PendingRequest {
-    resolve: (value: string) => void;
+    resolve: (value: unknown) => void;
     reject: (reason: Error) => void;
     command: string;
 }
@@ -45,7 +45,7 @@ export class TclDebugSession extends DebugSession {
         this.setDebuggerColumnsStartAt1(false);
     }
 
-    protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
+    protected initializeRequest(response: DebugProtocol.InitializeResponse, _args: DebugProtocol.InitializeRequestArguments): void {
         response.body = response.body || {};
 
         response.body.supportsConfigurationDoneRequest = true;
@@ -186,7 +186,7 @@ export class TclDebugSession extends DebugSession {
                 this.sendEvent(new OutputEvent(data.toString(), 'stderr'));
             });
 
-            this._tclProcess.on('exit', (code) => {
+            this._tclProcess.on('exit', () => {
                 if (!portResolved) {
                     portResolved = true;
                     clearTimeout(portTimeout);
@@ -409,7 +409,7 @@ export class TclDebugSession extends DebugSession {
             }
 
             this._debugRequests.push({
-                resolve: resolve as (value: string) => void,
+                resolve: resolve as (value: unknown) => void,
                 reject,
                 command
             });
@@ -417,7 +417,7 @@ export class TclDebugSession extends DebugSession {
         });
     }
 
-    private resolvePendingRequest(message: string, data?: any): void {
+    private resolvePendingRequest(message: string, data?: unknown): void {
         if (this._debugRequests.length === 0) {
             return;
         }
@@ -538,7 +538,7 @@ export class TclDebugSession extends DebugSession {
         });
     }
 
-    protected scopesRequest(response: DebugProtocol.ScopesResponse, args: DebugProtocol.ScopesArguments): void {
+    protected scopesRequest(response: DebugProtocol.ScopesResponse, _args: DebugProtocol.ScopesArguments): void {
         response.body = {
             scopes: [
                 {
@@ -636,7 +636,7 @@ export class TclDebugSession extends DebugSession {
         });
     }
 
-    protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
+    protected continueRequest(response: DebugProtocol.ContinueResponse, _args: DebugProtocol.ContinueArguments): void {
         this._isRunning = true;
         this._cachedVariables.clear();
         this._cachedStack = [];
@@ -649,7 +649,7 @@ export class TclDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
+    protected nextRequest(response: DebugProtocol.NextResponse, _args: DebugProtocol.NextArguments): void {
         this._isRunning = true;
         this._cachedVariables.clear();
 
@@ -660,7 +660,7 @@ export class TclDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
+    protected stepInRequest(response: DebugProtocol.StepInResponse, _args: DebugProtocol.StepInArguments): void {
         this._isRunning = true;
         this._cachedVariables.clear();
 
@@ -671,7 +671,7 @@ export class TclDebugSession extends DebugSession {
         this.sendResponse(response);
     }
 
-    protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
+    protected stepOutRequest(response: DebugProtocol.StepOutResponse, _args: DebugProtocol.StepOutArguments): void {
         this._isRunning = true;
         this._cachedVariables.clear();
 
@@ -707,12 +707,12 @@ export class TclDebugSession extends DebugSession {
         });
     }
 
-    protected disconnectRequest(response: DebugProtocol.DisconnectResponse, args: DebugProtocol.DisconnectArguments): void {
+    protected disconnectRequest(response: DebugProtocol.DisconnectResponse, _args: DebugProtocol.DisconnectArguments): void {
         this.cleanup();
         this.sendResponse(response);
     }
 
-    protected terminateRequest(response: DebugProtocol.TerminateResponse, args: DebugProtocol.TerminateArguments): void {
+    protected terminateRequest(response: DebugProtocol.TerminateResponse, _args: DebugProtocol.TerminateArguments): void {
         this.cleanup();
         this.sendResponse(response);
     }

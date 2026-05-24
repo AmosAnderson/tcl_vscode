@@ -6,8 +6,8 @@ export class TclSignatureHelpProvider implements vscode.SignatureHelpProvider {
     public provideSignatureHelp(
         document: vscode.TextDocument,
         position: vscode.Position,
-        token: vscode.CancellationToken,
-        context: vscode.SignatureHelpContext
+        _token: vscode.CancellationToken,
+        _context: vscode.SignatureHelpContext
     ): vscode.ProviderResult<vscode.SignatureHelp> {
         
         const text = document.lineAt(position.line).text;

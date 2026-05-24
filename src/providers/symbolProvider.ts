@@ -4,7 +4,7 @@ import { WorkspaceIndex } from '../analysis/workspaceIndex';
 export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
     provideDocumentSymbols(
         document: vscode.TextDocument,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.SymbolInformation[] | vscode.DocumentSymbol[]> {
         const symbols: vscode.DocumentSymbol[] = [];
         const text = document.getText();

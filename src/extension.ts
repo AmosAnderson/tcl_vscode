@@ -257,16 +257,16 @@ export async function activate(context: vscode.ExtensionContext) {
             // Clean up any partially initialized managers
             try {
                 interpreterManager?.dispose();
-            } catch (e) { /* ignore */ }
+            } catch { /* ignore */ }
             try {
                 packageManager?.dispose();
-            } catch (e) { /* ignore */ }
+            } catch { /* ignore */ }
             try {
                 dependencyManager?.dispose();
-            } catch (e) { /* ignore */ }
+            } catch { /* ignore */ }
             try {
                 taskProvider?.dispose();
-            } catch (e) { /* ignore */ }
+            } catch { /* ignore */ }
 
             // Reset managers to undefined
             interpreterManager = undefined;

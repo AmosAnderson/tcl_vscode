@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import { countBackslashes } from '../utils/tclUtils';
 
 export interface TclFormattingOptions {
@@ -25,7 +24,7 @@ export class TclFormatter {
     }
 
     format(text: string): string {
-        let normalized = this.normalizeInlineBlocks(text);
+        const normalized = this.normalizeInlineBlocks(text);
         const rawLines = normalized.split('\n');
         const out: string[] = [];
         let indent = 0;
@@ -38,7 +37,7 @@ export class TclFormatter {
         let inMultiLineExpr = false;
         let exprBraceDepth = 0;
 
-        for (let line of rawLines) {
+        for (const line of rawLines) {
             let trimmed = line.trim();
             if (trimmed === '') { out.push(''); continue; }
 
@@ -221,7 +220,7 @@ export class TclFormatter {
         const spaceOps = (segment: string): string => {
             // Add spaces around common operators if not already spaced
             // Handle > < == != + - * / % inside expressions / conditions
-            segment = segment.replace(/([A-Za-z0-9_\]\)])([+\-*\/>%<]=?|==|!=)([A-Za-z0-9_\[\$"'@])/g, (_m, a, op, b) => `${a} ${op} ${b}`);
+            segment = segment.replace(/([A-Za-z0-9_\])])([+\-*/>%<]=?|==|!=)([A-Za-z0-9_[$"'@])/g, (_m, a, op, b) => `${a} ${op} ${b}`);
             // Collapse multiple spaces
             segment = segment.replace(/\s{2,}/g, ' ');
             return segment;
@@ -564,7 +563,7 @@ export class TclFormatter {
                 if (braceDepth === 0 && i > 0) {
                     const prevChar = line[i - 1];
                     // If preceded by alphanumeric, ), or ] and not already spaced
-                    if (/[A-Za-z0-9_\)\]]/.test(prevChar)) {
+                    if (/[A-Za-z0-9_\])]/.test(prevChar)) {
                         // Check if there's already a space (shouldn't match but be safe)
                         if (result.length > 0 && result[result.length - 1] !== ' ') {
                             result.push(' ');

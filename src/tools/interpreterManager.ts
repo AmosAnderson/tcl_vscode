@@ -79,7 +79,7 @@ export class TclInterpreterManager {
                 } else if (version) {
                     this.outputChannel.appendLine(`[interpreterManager] Skipping unsupported TCL version ${version} at ${tclPath}`);
                 }
-            } catch (error) {
+            } catch {
                 // Path not found or not executable
             }
         }
@@ -116,7 +116,7 @@ export class TclInterpreterManager {
                             }
                         }
                     }
-                } catch (error) {
+                } catch {
                     // Directory not accessible
                 }
             }
@@ -147,7 +147,7 @@ export class TclInterpreterManager {
                     } else if (version) {
                         this.outputChannel.appendLine(`[interpreterManager] Skipping unsupported ActiveTcl version ${version} at ${tclPath}`);
                     }
-                } catch (error) {
+                } catch {
                     // Path not executable
                 }
             }
@@ -183,7 +183,7 @@ export class TclInterpreterManager {
             } finally {
                 try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
             }
-        } catch (error) {
+        } catch {
             return null;
         }
     }

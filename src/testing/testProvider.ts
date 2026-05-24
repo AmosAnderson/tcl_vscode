@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
-import * as crypto from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { createTempTclPath, escapeTclString } from '../utils/tclUtils';
 
@@ -13,16 +11,6 @@ interface TclTestResult {
     status: 'passed' | 'failed' | 'skipped';
     message?: string;
     duration?: number;
-}
-
-interface TclTestSuite {
-    name: string;
-    file: string;
-    tests: TclTestResult[];
-    passed: number;
-    failed: number;
-    skipped: number;
-    duration: number;
 }
 
 export class TclTestProvider {
@@ -207,7 +195,7 @@ export class TclTestProvider {
 
     private async debugTests(
         request: vscode.TestRunRequest,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): Promise<void> {
         // For debugging, we'll run the test with the debugger
         if (request.include && request.include.length > 0) {
@@ -279,7 +267,7 @@ export class TclTestProvider {
 
             const settle = () => {
                 this._runningProcesses.delete(testProcess);
-                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+                try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
             };
 
             // Timeout: kill test process after 60 seconds

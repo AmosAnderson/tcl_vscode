@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import { which, escapeTclString } from '../utils/tclUtils';
 
 /** Patterns that indicate potentially dangerous TCL commands (shell-out, file I/O). */

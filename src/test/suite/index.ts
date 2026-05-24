@@ -1,5 +1,5 @@
 import * as path from 'path';
-import Mocha = require('mocha');
+import Mocha from 'mocha';
 import { glob } from 'glob';
 
 export function run(): Promise<void> {
@@ -31,8 +31,6 @@ export function run(): Promise<void> {
                     e(err);
                 }
             })
-            .catch((err: any) => {
-                e(err);
-            });
+            .catch(e);
     });
 }

@@ -10,7 +10,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
         document: vscode.TextDocument,
         position: vscode.Position,
         newName: string,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): Promise<vscode.WorkspaceEdit | null> {
         
         let wordRange = document.getWordRangeAtPosition(position);
@@ -66,7 +66,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
     public prepareRename(
         document: vscode.TextDocument,
         position: vscode.Position,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Range | { range: vscode.Range; placeholder: string }> {
         
         let wordRange = document.getWordRangeAtPosition(position);
@@ -120,7 +120,6 @@ export class TclRenameProvider implements vscode.RenameProvider {
         const line = document.lineAt(wordStartPosition.line);
         const lineText = line.text;
         const wordStart = wordStartPosition.character;
-        const wordEnd = wordStart + word.length;
         
         // Don't prevent renaming if it's a variable reference (preceded by $)
         if (wordStart > 0 && lineText[wordStart - 1] === '$') {

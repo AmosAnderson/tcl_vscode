@@ -20,7 +20,7 @@ export class TclFormattingProvider implements vscode.DocumentFormattingEditProvi
     provideDocumentFormattingEdits(
         document: vscode.TextDocument,
         options: vscode.FormattingOptions,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
         try {
             const formatter = this.createFormatter(options);
@@ -40,7 +40,7 @@ export class TclFormattingProvider implements vscode.DocumentFormattingEditProvi
         document: vscode.TextDocument,
         range: vscode.Range,
         options: vscode.FormattingOptions,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
         try {
             const formatter = this.createFormatter(options);

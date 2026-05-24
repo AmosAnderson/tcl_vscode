@@ -68,7 +68,7 @@ proc main {args} {
 
 proc show_usage {} {
     global APP_NAME
-    puts "Usage: $APP_NAME \[options\] <arguments>"
+    puts "Usage: $APP_NAME \\[options\\] <arguments>"
     puts "Options:"
     puts "  -h, --help     Show this help message"
     puts "  -v, --version  Show version information"
@@ -95,7 +95,7 @@ namespace eval ::utils {
     # Logger procedure
     proc log {level message} {
         set timestamp [clock format [clock seconds] -format "%Y-%m-%d %H:%M:%S"]
-        puts stderr "\[$timestamp\] \[$level\] $message"
+        puts stderr "\\[$timestamp\\] \\[$level\\] $message"
     }
     
     # File operations
@@ -833,7 +833,7 @@ proc send_error {client status message} {
 
 # JSON escape helper
 proc json_escape {str} {
-    string map {\\ \\\\ \" \\\" \\n \\\\n \\r \\\\r \\t \\\\t} $str
+    string map {\\\\ \\\\\\\\ " \\\\" \\\\n \\\\\\\\n \\\\r \\\\\\\\r \\\\t \\\\\\\\t} $str
 }
 
 # Create document root if it doesn't exist

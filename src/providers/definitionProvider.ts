@@ -7,7 +7,7 @@ export class TclDefinitionProvider implements vscode.DefinitionProvider {
     async provideDefinition(
         document: vscode.TextDocument,
         position: vscode.Position,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): Promise<vscode.Location | vscode.Location[] | null> {
         const wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {
@@ -94,7 +94,7 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
         document: vscode.TextDocument,
         position: vscode.Position,
         context: vscode.ReferenceContext,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): Promise<vscode.Location[]> {
         const wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {
@@ -172,7 +172,7 @@ export class TclReferenceProvider implements vscode.ReferenceProvider {
                     const range = new vscode.Range(position, position);
                     references.push(new vscode.Location(file, range));
                 }
-            } catch (error) {
+            } catch {
                 // Skip files that can't be opened
                 continue;
             }

@@ -3,7 +3,7 @@ import { TclDebugSession } from './tclDebugAdapter';
 
 export class TclDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
     
-    createDebugAdapterDescriptor(session: vscode.DebugSession, executable: vscode.DebugAdapterExecutable | undefined): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
+    createDebugAdapterDescriptor(_session: vscode.DebugSession, _executable: vscode.DebugAdapterExecutable | undefined): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
         // Use inline debug adapter implementation
         return new vscode.DebugAdapterInlineImplementation(new TclDebugSession());
     }
@@ -19,7 +19,7 @@ export class TclConfigurationProvider implements vscode.DebugConfigurationProvid
      * Massage a debug configuration just before a debug session is being launched,
      * e.g. add all missing attributes to the debug configuration.
      */
-    resolveDebugConfiguration(folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration, token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration> {
+    resolveDebugConfiguration(_folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration, _token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration> {
 
         // if launch.json is missing or empty
         if (!config.type && !config.request && !config.name) {
@@ -45,7 +45,7 @@ export class TclConfigurationProvider implements vscode.DebugConfigurationProvid
     /**
      * Provide dynamic configurations for the debug configuration dropdown.
      */
-    provideDebugConfigurations(folder: vscode.WorkspaceFolder | undefined, token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration[]> {
+    provideDebugConfigurations(_folder: vscode.WorkspaceFolder | undefined, _token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration[]> {
         return [
             {
                 name: "Launch TCL",

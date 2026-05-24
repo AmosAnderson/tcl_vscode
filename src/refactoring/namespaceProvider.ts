@@ -133,8 +133,6 @@ export class TclNamespaceExtractProvider implements vscode.CodeActionProvider {
 
             // Match bare calls: procName at word boundary (not already namespace-qualified)
             const barePattern = new RegExp(`(?<![:\\w])${escaped}(?=\\s|\\])`, 'g');
-            // Match calls inside brackets: [procName ...]
-            const bracketPattern = new RegExp(`(\\[)${escaped}(?=\\s|\\])`, 'g');
 
             let match;
 

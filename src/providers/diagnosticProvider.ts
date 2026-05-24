@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import * as path from 'path';
 import * as fs from 'fs';
 import { countBackslashes, createTempTclPath, toForwardSlashes, computeMultilineStringLines } from '../utils/tclUtils';
 
@@ -48,8 +47,8 @@ export class TclDiagnosticProvider {
         const text = document.getText();
         const lines = text.split('\n');
 
-        let braceStack: number[] = [];
-        let bracketStack: number[] = [];
+        const braceStack: number[] = [];
+        const bracketStack: number[] = [];
         let inString = false;
         let stringStartLine = -1;
 
@@ -223,16 +222,17 @@ exit 0
 
                 try {
                     await execFileAsync(tclshPath, [checkFile]);
-                } catch (error: any) {
+                } catch (error) {
+                    const execError = error as { stderr?: string };
                     // tclsh returns non-zero exit code for syntax errors
-                    if (error.stderr) {
-                        this.parseTclshErrors(error.stderr, document, diagnostics);
+                    if (execError.stderr) {
+                        this.parseTclshErrors(execError.stderr, document, diagnostics);
                     }
                 } finally {
                     // Clean up check script
                     try {
                         fs.unlinkSync(checkFile);
-                    } catch (e) {
+                    } catch {
                         // Ignore cleanup errors
                     }
                 }
@@ -240,7 +240,7 @@ exit 0
                 // Clean up temp file
                 try {
                     fs.unlinkSync(tempFile);
-                } catch (e) {
+                } catch {
                     // Ignore cleanup errors
                 }
             }
@@ -262,13 +262,13 @@ exit 0
                 try {
                     await execFileAsync(candidate, [probeFile]);
                     return candidate;
-                } catch (_) {
+                } catch {
                     continue;
                 }
             }
             return null;
         } finally {
-            try { fs.unlinkSync(probeFile); } catch (_) { /* ignore */ }
+            try { fs.unlinkSync(probeFile); } catch { /* ignore */ }
         }
     }
 

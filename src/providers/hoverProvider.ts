@@ -10,7 +10,7 @@ export class TclHoverProvider implements vscode.HoverProvider {
     provideHover(
         document: vscode.TextDocument,
         position: vscode.Position,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Hover> {
         const wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {

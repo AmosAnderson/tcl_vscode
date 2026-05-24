@@ -55,7 +55,6 @@ export class DocumentSymbolTable {
         for (let lineNum = 0; lineNum < lines.length; lineNum++) {
             const line = lines[lineNum];
             const trimmed = line.trim();
-            const currentScope = scopeStack[scopeStack.length - 1];
 
             // Skip pure comment lines
             if (trimmed.startsWith('#')) {
@@ -111,7 +110,7 @@ export class DocumentSymbolTable {
             return undefined;
         }
 
-        let word = this.document.getText(wordRange);
+        const word = this.document.getText(wordRange);
         const line = this.document.lineAt(position.line).text;
         const charBefore = wordRange.start.character > 0
             ? line[wordRange.start.character - 1]

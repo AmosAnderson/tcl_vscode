@@ -24,8 +24,8 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
     async provideCompletionItems(
         document: vscode.TextDocument,
         position: vscode.Position,
-        token: vscode.CancellationToken,
-        context: vscode.CompletionContext
+        _token: vscode.CancellationToken,
+        _context: vscode.CompletionContext
     ): Promise<vscode.CompletionItem[] | vscode.CompletionList> {
         const linePrefix = document.lineAt(position).text.substring(0, position.character);
         const completions: vscode.CompletionItem[] = [];
@@ -119,7 +119,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
                 // Parse arguments (handle default values like {arg default})
                 const argList = this.parseArgumentList(args);
                 if (argList.length > 0) {
-                    const snippetArgs = argList.map((arg, index) => `$\{${index + 1}:${arg}\}`).join(' ');
+                    const snippetArgs = argList.map((arg, index) => `$\{${index + 1}:${arg}}`).join(' ');
                     item.insertText = new vscode.SnippetString(`${procName} ${snippetArgs}`);
                 } else {
                     item.insertText = procName;
@@ -284,7 +284,7 @@ export class TclCompletionItemProvider implements vscode.CompletionItemProvider 
             if (proc.params.length > 0) {
                 const filtered = proc.params.filter(a => a !== 'args');
                 if (filtered.length > 0) {
-                    const snippetArgs = filtered.map((arg, i) => `$\{${i + 1}:${arg}\}`).join(' ');
+                    const snippetArgs = filtered.map((arg, i) => `$\{${i + 1}:${arg}}`).join(' ');
                     item.insertText = new vscode.SnippetString(`${proc.name} ${snippetArgs}`);
                 } else {
                     item.insertText = proc.name;

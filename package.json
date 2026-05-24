@@ -357,7 +357,7 @@
     "@vscode/vsce": "^3.9.1",
     "eslint": "^10.4.0",
     "glob": "^13.0.6",
-    "mocha": "^11.7.5",
+    "mocha": "^11.7.6",
     "typescript": "^6.0.3"
   },
   "overrides": {

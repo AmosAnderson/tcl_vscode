@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as os from 'os';
-import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
 import { createTempTclPath, toForwardSlashes } from '../utils/tclUtils';
@@ -177,7 +175,7 @@ puts "Coverage data saved"
             });
 
             process.on('close', (code) => {
-                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+                try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
                 if (code === 0) {
                     resolve(output);
                 } else {
@@ -186,7 +184,7 @@ puts "Coverage data saved"
             });
 
             process.on('error', (error) => {
-                try { fs.unlinkSync(tmpFile); } catch (_) { /* ignore */ }
+                try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
                 reject(error);
             });
         });

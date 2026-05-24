@@ -11,8 +11,8 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
     public provideCodeActions(
         document: vscode.TextDocument,
         range: vscode.Range | vscode.Selection,
-        context: vscode.CodeActionContext,
-        token: vscode.CancellationToken
+        _context: vscode.CodeActionContext,
+        _token: vscode.CancellationToken
     ): vscode.ProviderResult<(vscode.Command | vscode.CodeAction)[]> {
         
         const actions: vscode.CodeAction[] = [];
@@ -50,7 +50,7 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
         return action;
     }
 
-    private createInlineProcedureAction(document: vscode.TextDocument, range: vscode.Range | vscode.Selection): vscode.CodeAction {
+    private createInlineProcedureAction(_document: vscode.TextDocument, _range: vscode.Range | vscode.Selection): vscode.CodeAction {
         const action = new vscode.CodeAction(
             'Inline Procedure',
             vscode.CodeActionKind.RefactorInline
@@ -196,7 +196,7 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
             return;
         }
 
-        let variableName = document.getText(wordRange);
+        const variableName = document.getText(wordRange);
         
         // Check if this is a variable reference or assignment
         const line = document.lineAt(position.line);

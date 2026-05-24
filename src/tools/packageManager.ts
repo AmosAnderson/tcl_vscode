@@ -60,7 +60,7 @@ export class TclPackageManager {
                 const { stdout } = await execFileAsync(interpreterPath, [tempScriptPath]);
                 return stdout.trim().split('\n').map(p => p.trim()).filter(p => p.length > 0);
             } finally {
-                try { await fs.promises.unlink(tempScriptPath); } catch (_) { /* ignore */ }
+                try { await fs.promises.unlink(tempScriptPath); } catch { /* ignore */ }
             }
         } catch (error) {
             this.outputChannel.appendLine(`Error getting auto_path: ${error}`);
@@ -229,7 +229,7 @@ export class TclPackageManager {
             } finally {
                 try {
                     await fs.promises.unlink(tempScriptPath);
-                } catch (_) {
+                } catch {
                     // Ignore temp file cleanup errors
                 }
             }
@@ -390,7 +390,7 @@ export class TclPackageManager {
         try {
             this.outputChannel.appendLine(`Installing ${packageName}${version ? ' ' + version : ''} via teacup...`);
 
-            const result = await vscode.window.withProgress(
+            await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Installing ${packageName}...`,
@@ -501,7 +501,7 @@ export class TclPackageManager {
                             await fs.promises.writeFile(tempScriptPath, indexScript, 'utf8');
                             await execFileAsync(interpreterPath, [tempScriptPath]);
                         } finally {
-                            try { await fs.promises.unlink(tempScriptPath); } catch (_) { /* ignore */ }
+                            try { await fs.promises.unlink(tempScriptPath); } catch { /* ignore */ }
                         }
                     }
                 );
@@ -557,7 +557,7 @@ export class TclPackageManager {
                 const versions = stdout.trim().split(/\s+/).filter(v => v.length > 0);
                 return versions.length > 0 ? versions[versions.length - 1] : null;
             } finally {
-                try { await fs.promises.unlink(tempScriptPath); } catch (_) { /* ignore */ }
+                try { await fs.promises.unlink(tempScriptPath); } catch { /* ignore */ }
             }
         } catch {
             return null;
