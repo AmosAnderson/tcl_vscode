@@ -8,13 +8,13 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 - **Correctness**: `computeMultilineStringLines` now honors `#` comments at command position, matching the behavior of `validateBasicSyntax`. Previously, a comment containing an odd number of unescaped `"` characters caused `checkCommonIssues` and the `expr`/`switch`/`catch`/deprecated-command lint checks to silently skip every subsequent line.
 
 ### Changed
-- **Dependencies**: Updated development tooling, including TypeScript 6.0.3, ESLint 10.4.0, `@typescript-eslint` 8.59.4, `@types/vscode` 1.120.0, and `@vscode/vsce` 3.9.1.
+- **Dependencies**: Updated development tooling, including TypeScript 6.0.3, ESLint 10.4.1, `@typescript-eslint` 8.60.1, `@types/vscode` 1.120.0, and `@vscode/vsce` 3.9.2.
 - **Engine**: Minimum VS Code version updated to 1.120.0 to match the extension API typings.
 - **Testing**: Updated the Mocha suite runner import for compatibility with current TypeScript and Mocha typings.
 - **Documentation**: Replaced Claude Code-specific workspace guidance with compact OpenCode instructions and removed `CLAUDE.md`.
 
 ### Security
-- **Dependencies**: Refreshed the lockfile and resolved reported npm audit vulnerabilities.
+- **Dependencies**: Refreshed the lockfile and resolved reported npm audit vulnerabilities, including the transitive `tmp <0.2.6` path traversal advisory by resolving `tmp` to 0.2.7.
 
 ## [0.7.0] - 2026-03-31
 
