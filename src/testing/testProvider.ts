@@ -172,12 +172,26 @@ export class TclTestProvider {
     ): Promise<void> {
         const run = this._testController.createTestRun(request);
         const queue: vscode.TestItem[] = [];
+        const excluded = new Set<string>(request.exclude?.map(test => test.id) ?? []);
 
-        // Collect tests to run
+        const enqueueRunnableTests = (test: vscode.TestItem): void => {
+            if (excluded.has(test.id)) {
+                return;
+            }
+
+            if (this._testData.has(test)) {
+                queue.push(test);
+                return;
+            }
+
+            test.children.forEach(child => enqueueRunnableTests(child));
+        };
+
+        // Collect runnable child tests rather than queuing file/container items.
         if (request.include) {
-            request.include.forEach(test => queue.push(test));
+            request.include.forEach(enqueueRunnableTests);
         } else {
-            this._testController.items.forEach(test => queue.push(test));
+            this._testController.items.forEach(enqueueRunnableTests);
         }
 
         // Execute tests

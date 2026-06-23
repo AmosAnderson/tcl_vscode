@@ -345,21 +345,6 @@ export class TclTaskProviderManager {
         
         this.taskProvider = vscode.tasks.registerTaskProvider('tcl', provider);
         context.subscriptions.push(this.taskProvider);
-
-        // Register commands for running tasks
-        context.subscriptions.push(
-            vscode.commands.registerCommand('tcl.runTask', () => {
-                vscode.commands.executeCommand('workbench.action.tasks.runTask');
-            }),
-
-            vscode.commands.registerCommand('tcl.runTestTask', () => {
-                vscode.commands.executeCommand('workbench.action.tasks.test');
-            }),
-
-            vscode.commands.registerCommand('tcl.configureTasks', () => {
-                vscode.commands.executeCommand('workbench.action.tasks.configureTaskRunner');
-            })
-        );
     }
 
     public dispose(): void {

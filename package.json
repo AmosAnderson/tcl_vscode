@@ -26,8 +26,11 @@
     "url": "https://github.com/AmosAnderson/tcl_vscode"
   },
   "activationEvents": [
+    "onLanguage:tcl",
     "onDebugResolve:tcl",
-    "onDebugInitialConfigurations"
+    "onDebugInitialConfigurations",
+    "workspaceContains:**/*.tcl",
+    "workspaceContains:**/*.test"
   ],
   "main": "./out/extension.js",
   "contributes": {

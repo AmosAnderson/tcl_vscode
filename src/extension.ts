@@ -21,7 +21,7 @@ import { TclPackageManager } from './tools/packageManager';
 import { TclProjectTemplates } from './tools/projectTemplates';
 import { TclTaskProviderManager } from './tools/taskProvider';
 import { TclDependencyManager } from './tools/dependencyManager';
-import { registerRunCommands } from './tools/runCommands';
+import { runWithArgs, runWithInterpreter } from './tools/runCommands';
 import { cleanupTempTclFiles } from './utils/tclUtils';
 import { WorkspaceIndex } from './analysis/workspaceIndex';
 
@@ -245,7 +245,6 @@ export async function activate(context: vscode.ExtensionContext) {
             await packageManager.initialize();
             await dependencyManager.initialize();
             taskProvider.register(context);
-            registerRunCommands(context, interpreterManager);
 
             phase6Initialized = true;
 
@@ -340,9 +339,39 @@ export async function activate(context: vscode.ExtensionContext) {
             dependencyManager?.createDependencyReport();
         }),
 
-        // Task management commands
-        vscode.commands.registerCommand('tcl.runBuild', () => {
+        // Task and run commands
+        vscode.commands.registerCommand('tcl.runBuild', async () => {
+            await ensurePhase6Initialized();
             vscode.commands.executeCommand('workbench.action.tasks.build');
+        }),
+
+        vscode.commands.registerCommand('tcl.runTask', async () => {
+            await ensurePhase6Initialized();
+            vscode.commands.executeCommand('workbench.action.tasks.runTask');
+        }),
+
+        vscode.commands.registerCommand('tcl.runTestTask', async () => {
+            await ensurePhase6Initialized();
+            vscode.commands.executeCommand('workbench.action.tasks.test');
+        }),
+
+        vscode.commands.registerCommand('tcl.configureTasks', async () => {
+            await ensurePhase6Initialized();
+            vscode.commands.executeCommand('workbench.action.tasks.configureTaskRunner');
+        }),
+
+        vscode.commands.registerCommand('tcl.runWithInterpreter', async () => {
+            await ensurePhase6Initialized();
+            if (interpreterManager) {
+                await runWithInterpreter(interpreterManager);
+            }
+        }),
+
+        vscode.commands.registerCommand('tcl.runWithArgs', async () => {
+            await ensurePhase6Initialized();
+            if (interpreterManager) {
+                await runWithArgs(interpreterManager);
+            }
         })
     );
 
