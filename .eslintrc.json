@@ -1,3 +1,0 @@
-{
-  "note": "ESLint now uses the flat config in eslint.config.cjs. This file is kept only to guide editors that still look for legacy configuration files."
-}

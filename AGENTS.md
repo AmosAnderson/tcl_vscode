@@ -4,7 +4,7 @@
 - `npm install` restores the lockfile-pinned VS Code extension toolchain.
 - `npm run compile` runs `tsc -p ./` and then `copy-scripts`; use it before tests or packaging because it copies `src/debug/scripts/*.tcl` into `out/debug/scripts/`.
 - `npm run watch` only watches TypeScript; it does not run `copy-scripts`.
-- `npm run lint` is `eslint src --ext ts` using the flat config in `eslint.config.cjs`.
+- `npm run lint` is `oxlint src` using `.oxlintrc.json`.
 - `npm test` runs `pretest` first, then `node ./out/test/runTest.js`, which launches VS Code through `@vscode/test-electron`.
 - There is no package script for a single test file. The suite runner loads every compiled `**/*.test.js` under `out/test/` and uses Mocha's TDD API (`suite`/`test`).
 - `npm run package` invokes `vsce package --allow-package-all-secrets --allow-package-env-file`; review what is included before using it.
