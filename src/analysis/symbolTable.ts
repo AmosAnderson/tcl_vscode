@@ -195,7 +195,9 @@ export class DocumentSymbolTable {
             if (this.text[i] !== '$') continue;
             const match = /^\$\{([^}]+)\}|^\$((?:[\p{L}\p{M}\p{N}_]+|:{2,})+)/u.exec(this.text.slice(i, word.contentEnd));
             if (!match) continue;
-            const name = match[1] ?? match[2];
+            const rawName = match[1] ?? match[2];
+            // Braced array references bind to the array, and rename must leave the literal index intact.
+            const name = match[1] ? rawName.replace(/\([\s\S]*\)$/, '') : rawName;
             const start = i + (match[1] ? 2 : 1);
             this.pending.push({ scope, name, start, end: start + name.length });
             i += match[0].length - 1;

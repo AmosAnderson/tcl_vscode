@@ -51,13 +51,21 @@ suite('Language refactoring execution regressions', () => {
         const source = 'set count 1\nset count 2\nincr count\nappend count 4\nputs $count\n';
         const result = await rename(source, '$count', 'total');
         assert.ok(!result.includes('count'));
-        assert.strictEqual(execute(result), '34\n');
+        assert.strictEqual(execute(result), '34' + os.EOL);
     });
 
     test('rename preserves Unicode array bindings', async () => {
-        const source = 'set é(x+y) 4\nputs [expr {$é(x+y)+1}]\n';
-        const result = await rename(source, '$é', 'renamed');
-        assert.ok(result.includes('set renamed(x+y) 4'));
+        // Braced references support non-ASCII array names on both Tcl 8 and Tcl 9.
+        const source = 'set é(x+y) 4\nputs [expr {${é(x+y)}+1}]\n';
+        const result = await rename(source, 'é', 'renamed', true);
+        assert.strictEqual(result, 'set renamed(x+y) 4\nputs [expr {${renamed(x+y)}+1}]\n');
+        assert.strictEqual(execute(result), execute(source));
+    });
+
+    test('rename preserves literal indices in braced array references', async () => {
+        const source = 'set values(x+y) 4\nset values(other::key) 7\nputs [list ${values(x+y)} ${values(other::key)}]\n';
+        const result = await rename(source, 'values', 'renamed', true);
+        assert.strictEqual(result, 'set renamed(x+y) 4\nset renamed(other::key) 7\nputs [list ${renamed(x+y)} ${renamed(other::key)}]\n');
         assert.strictEqual(execute(result), execute(source));
     });
 

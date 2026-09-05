@@ -65,15 +65,18 @@ suite('Tcl project and tool regressions', () => {
     test('generated suite executes each test once and exits nonzero after a failure', async function () {
         requireTcl(this);
         await new TclProjectTemplates().createProject('test-suite', directory);
+        const constraint = execute('package require tcltest\nputs [::tcltest::testConstraint unix]\n');
+        assert.strictEqual(constraint.status, 0, constraint.stderr);
+        const skipped = constraint.stdout.trim() === '1' ? 0 : 1;
         const runner = path.join(directory, 'run_tests.tcl');
         const passing = spawnSync('tclsh', [runner], { cwd: os.tmpdir(), encoding: 'utf8', timeout: 5000 });
         assert.strictEqual(passing.status, 0, passing.stderr);
-        assert.match(passing.stdout, /Total\s+4\s+Passed\s+4/);
+        assert.match(passing.stdout, new RegExp(`Total\\s+4\\s+Passed\\s+${4 - skipped}\\s+Skipped\\s+${skipped}\\s+Failed\\s+0`));
         const file = path.join(directory, 'tests', 'example.test');
         fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('} -result "test value"', '} -result "incorrect result"'));
         const failing = spawnSync('tclsh', [runner], { cwd: os.tmpdir(), encoding: 'utf8', timeout: 5000 });
         assert.strictEqual(failing.status, 1, failing.stdout + failing.stderr);
-        assert.match(failing.stdout, /Total\s+4\s+Passed\s+3\s+Skipped\s+0\s+Failed\s+1/);
+        assert.match(failing.stdout, new RegExp(`Total\\s+4\\s+Passed\\s+${3 - skipped}\\s+Skipped\\s+${skipped}\\s+Failed\\s+1`));
         assert.match(failing.stdout, /Sourced 1 Test Files/);
     });
 

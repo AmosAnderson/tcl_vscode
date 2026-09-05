@@ -46,7 +46,7 @@ node --test .github/scripts/prepare-release.test.mjs
 
 `npm run test:unit` compiles and runs suites that do not need the VS Code API, including real Tcl debugger fixtures. `npm test` also compiles, then runs all extension suites in an isolated two-folder VS Code workspace. The standalone suites are included in the full host run. Tests use Mocha's TDD `suite`/`test` interface. Runtime tests need `tclsh`; capability-specific TclOO and Thread cases skip when unavailable.
 
-The integration launcher defaults to VS Code 1.136.1. Override it with `VSCODE_TEST_VERSION` or `VSCODE_EXECUTABLE_PATH`. To focus either Mocha runner in a POSIX shell:
+The integration launcher defaults to VS Code 1.136.1. Override it with `VSCODE_TEST_VERSION` or `VSCODE_EXECUTABLE_PATH`. It forwards the launching shell's `PATH` into the test host and reports the selected Tcl version, so a login-shell environment cannot silently substitute another interpreter. To focus either Mocha runner in a POSIX shell:
 
 ```sh
 TCL_TEST_GREP='Contextual formatting' npm test

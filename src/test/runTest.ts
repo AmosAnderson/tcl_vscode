@@ -34,6 +34,7 @@ async function main() {
         await runTests({ extensionDevelopmentPath, extensionTestsPath,
             version: process.env.VSCODE_TEST_VERSION || '1.136.1',
             vscodeExecutablePath: process.env.VSCODE_EXECUTABLE_PATH,
+            extensionTestsEnv: { TCL_TEST_PATH: process.env.PATH },
             launchArgs: [workspace, '--disable-extensions', '--skip-welcome', '--skip-release-notes', '--disable-workspace-trust'] });
     } catch (error) {
         console.error('Failed to run tests', error);
