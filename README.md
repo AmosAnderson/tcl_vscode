@@ -4,8 +4,8 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 
 ## Requirements
 
-- VS Code **1.120.0** or newer
-- Node.js **18 LTS** or newer (for local development only)
+- VS Code **1.136.0** or newer
+- Node.js **22.12.0** or newer (for local development only)
 - A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing
 
 ## Features
@@ -159,9 +159,9 @@ tcl_vscode/
 
 ## Scripts
 
-- `npm run compile` - Compile TypeScript
+- `npm run compile` - Compile TypeScript 7 and copy TCL debug scripts
 - `npm run watch` - Watch and recompile
-- `npm run lint` - Run ESLint
+- `npm run lint` - Run Oxlint
 - `npm test` - Run tests
 
 ## Contributing

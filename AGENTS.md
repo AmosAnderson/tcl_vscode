@@ -20,7 +20,7 @@
 - Debugging uses `src/debug/tclDebugAdapter.ts` plus the TCL-side server in `src/debug/scripts/debugServer.tcl` over TCP; keep the compile copy step in mind for any script changes.
 
 ## Environment And Tests
-- Development expects Node 18+ and VS Code 1.120+; TypeScript is strict, CommonJS, target ES2020.
+- Development expects Node 22.12+ and VS Code 1.136+; TypeScript 7 is strict, CommonJS, target ES2020.
 - Many runtime features shell out to `tclsh`; settings include `tcl.interpreter.path`, `tcl.repl.tclPath`, and `tcl.test.tclPath`.
 - `.vscode/launch.json` currently contains TCL debug configs only, not an Extension Development Host config; add/use an extension-host launch config before relying on F5 for TypeScript extension debugging.
 - Test files live in `src/test/`; root TCL fixtures such as `test.tcl`, `test_formatting.tcl`, and `comprehensive_test.tcl` are user-script samples.

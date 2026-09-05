@@ -7,7 +7,7 @@ VS Code extension providing TCL language support: syntax highlighting, formattin
 ```bash
 npm run compile     # TypeScript build + copies .tcl debug scripts to out/
 npm run watch       # Continuous compilation
-npm run lint        # ESLint on src/
+npm run lint        # Oxlint on src/
 npm test            # Full VS Code integration tests (Mocha + @vscode/test-electron)
 npm run package     # Build .vsix extension package
 ```
@@ -40,5 +40,5 @@ The extension activates in `src/extension.ts`, registering features in phases:
 - Conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`, `chore:`
 - Provider registration stays centralized in `extension.ts`
 - New language features follow the existing provider pattern and register in the appropriate phase block
-- TypeScript strict mode, compiled to ES2020, targeting VS Code 1.125+
+- Node.js 22.12+ for development; TypeScript 7 strict mode, compiled to ES2020, targeting VS Code 1.136+
 - Oxlint with the TypeScript plugin configured in `.oxlintrc.json`

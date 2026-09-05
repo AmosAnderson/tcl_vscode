@@ -24,9 +24,9 @@ We are committed to providing a welcoming and inclusive environment. Please:
 ## Getting Started
 
 ### Prerequisites
-- Node.js (v18 LTS or higher)
+- Node.js (v22.12.0 or higher)
 - npm (v9 or higher)
-- VS Code 1.120.0 or newer
+- VS Code 1.136.0 or newer
 - Git
 - TCL interpreter (for testing)
 
