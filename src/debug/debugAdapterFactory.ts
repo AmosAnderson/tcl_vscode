@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { TclDebugSession } from './tclDebugAdapter';
+import { resolveTclInterpreter } from '../tools/executionContext';
 
 export class TclDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
     
@@ -19,7 +20,7 @@ export class TclConfigurationProvider implements vscode.DebugConfigurationProvid
      * Massage a debug configuration just before a debug session is being launched,
      * e.g. add all missing attributes to the debug configuration.
      */
-    resolveDebugConfiguration(_folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration, _token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration> {
+    resolveDebugConfiguration(folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration, _token?: vscode.CancellationToken): vscode.ProviderResult<vscode.DebugConfiguration> {
 
         // if launch.json is missing or empty
         if (!config.type && !config.request && !config.name) {
@@ -33,6 +34,11 @@ export class TclConfigurationProvider implements vscode.DebugConfigurationProvid
             }
         }
 
+        if (config.request === 'attach') return config;
+        const resource = config.program && !config.program.includes('${') ? vscode.Uri.file(config.program) :
+            vscode.window.activeTextEditor?.document.uri || folder?.uri;
+        config.tclPath = resolveTclInterpreter(resource, undefined, config.tclPath);
+        if (!config.cwd && folder) config.cwd = folder.uri.fsPath;
         if (!config.program) {
             return vscode.window.showInformationMessage("Cannot find a program to debug").then(_ => {
                 return undefined;	// abort launch
@@ -53,7 +59,6 @@ export class TclConfigurationProvider implements vscode.DebugConfigurationProvid
                 type: "tcl",
                 program: "${file}",
                 stopOnEntry: true,
-                tclPath: "tclsh",
                 cwd: "${workspaceFolder}"
             },
             {
@@ -62,7 +67,6 @@ export class TclConfigurationProvider implements vscode.DebugConfigurationProvid
                 type: "tcl",
                 program: "${file}",
                 stopOnEntry: false,
-                tclPath: "tclsh",
                 cwd: "${workspaceFolder}"
             }
         ];

@@ -1,44 +1,59 @@
 import * as vscode from 'vscode';
 import { which, escapeTclString } from '../utils/tclUtils';
+import { activeTclResource, resolveTclCwd, resolveTclInterpreter } from '../tools/executionContext';
 
 /** Patterns that indicate potentially dangerous TCL commands (shell-out, file I/O). */
 const DANGEROUS_TCL_PATTERNS = /\b(exec\s|open\s+\|)/;
 
+interface ReplHost {
+    interpreter(resource?: vscode.Uri): string;
+    cwd(resource?: vscode.Uri): string | undefined;
+    which(command: string): Promise<string | null>;
+    createTerminal(options: vscode.TerminalOptions): vscode.Terminal;
+    onDidCloseTerminal(listener: (terminal: vscode.Terminal) => void): vscode.Disposable;
+}
+
 export class TclREPLProvider {
     private _terminal: vscode.Terminal | undefined;
 
-    public async startREPL(): Promise<void> {
-        if (this._terminal) {
+    private starting: Promise<void> | undefined;
+    private terminalContext: string | undefined;
+    private disposed = false;
+    private readonly closeSubscription: vscode.Disposable;
+    constructor(private readonly host: ReplHost = {
+        interpreter: resource => resolveTclInterpreter(resource, 'repl'), cwd: resolveTclCwd, which,
+        createTerminal: options => vscode.window.createTerminal(options), onDidCloseTerminal: vscode.window.onDidCloseTerminal
+    }) {
+        this.closeSubscription = host.onDidCloseTerminal(terminal => {
+            if (this._terminal === terminal) { this._terminal = undefined; this.terminalContext = undefined; }
+        });
+    }
+
+    public async startREPL(resource = activeTclResource()): Promise<void> {
+        if (this.starting) { await this.starting; return this.startREPL(resource); }
+        if (this.disposed) return;
+        const tclPath = this.host.interpreter(resource);
+        const cwd = this.host.cwd(resource);
+        const key = JSON.stringify([tclPath, cwd]);
+        if (this._terminal && this.terminalContext === key) { this._terminal.show(); return; }
+        this._terminal?.dispose();
+        this._terminal = undefined;
+        this.terminalContext = undefined;
+        this.starting = (async () => {
+            const resolvedPath = await this.host.which(tclPath);
+            if (!resolvedPath) {
+                vscode.window.showErrorMessage(`TCL interpreter not found: "${tclPath}". Check the interpreter settings.`);
+                return;
+            }
+            if (this.disposed) return;
+            this._terminal?.dispose();
+            this._terminal = this.host.createTerminal({ name: 'TCL REPL', shellPath: resolvedPath, cwd,
+                iconPath: new vscode.ThemeIcon('terminal'), color: new vscode.ThemeColor('terminal.ansiBlue') });
+            this.terminalContext = key;
             this._terminal.show();
-            return;
-        }
-
-        // Get TCL interpreter path from configuration
-        const config = vscode.workspace.getConfiguration('tcl');
-        const tclPath = config.get<string>('repl.tclPath', 'tclsh');
-
-        // Validate the interpreter path before using it
-        const resolvedPath = await which(tclPath);
-        if (!resolvedPath) {
-            vscode.window.showErrorMessage(
-                `TCL interpreter not found: "${tclPath}". Check the tcl.repl.tclPath setting.`
-            );
-            return;
-        }
-
-        try {
-            // Create a simple terminal that runs tclsh directly
-            this._terminal = vscode.window.createTerminal({
-                name: 'TCL REPL',
-                shellPath: resolvedPath,
-                iconPath: new vscode.ThemeIcon('terminal'),
-                color: new vscode.ThemeColor('terminal.ansiBlue')
-            });
-
-            this._terminal.show();
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to start TCL REPL: ${error}`);
-        }
+        })();
+        try { await this.starting; } catch (error) { vscode.window.showErrorMessage(`Failed to start TCL REPL: ${error}`); }
+        finally { this.starting = undefined; }
     }
 
     public async evaluateSelection(): Promise<void> {
@@ -78,9 +93,7 @@ export class TclREPLProvider {
         }
 
         // Start REPL if not already running
-        if (!this._terminal) {
-            await this.startREPL();
-        }
+        await this.startREPL(editor.document.uri);
 
         // Send the text to the terminal
         this._terminal?.sendText(text);
@@ -95,14 +108,12 @@ export class TclREPLProvider {
         }
 
         // Save the file first
-        await editor.document.save();
+        if (!await editor.document.save() || editor.document.isUntitled) return;
 
         const filePath = editor.document.fileName;
         
         // Start REPL if not already running
-        if (!this._terminal) {
-            await this.startREPL();
-        }
+        await this.startREPL(editor.document.uri);
 
         // Source the file in the REPL using double-quote quoting with proper escaping
         this._terminal?.sendText(`source "${escapeTclString(filePath)}"`);
@@ -110,7 +121,10 @@ export class TclREPLProvider {
     }
 
     public dispose(): void {
-        // Terminal will be disposed automatically by VS Code
+        this.disposed = true;
+        this.closeSubscription.dispose();
+        this._terminal?.dispose();
+        this._terminal = undefined;
     }
 }
 

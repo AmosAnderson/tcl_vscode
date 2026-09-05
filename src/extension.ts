@@ -24,6 +24,8 @@ import { TclDependencyManager } from './tools/dependencyManager';
 import { runWithArgs, runWithInterpreter } from './tools/runCommands';
 import { cleanupTempTclFiles } from './utils/tclUtils';
 import { WorkspaceIndex } from './analysis/workspaceIndex';
+import { TclCodeLensProvider } from './providers/codeLensProvider';
+import { activeTclResource, resolveTclFolder } from './tools/executionContext';
 
 // Track disposable providers so deactivate() can clean them up
 let activeTestProvider: TclTestProvider | undefined;
@@ -55,15 +57,19 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const validateDocument = async (document: vscode.TextDocument) => {
         if (document.languageId === 'tcl') {
-            await diagnosticProvider.provideDiagnostics(document);
             lintProvider.lint(document);
+            await diagnosticProvider.provideDiagnostics(document);
         }
     };
 
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(validateDocument),
         vscode.workspace.onDidChangeTextDocument(event => validateDocument(event.document)),
-        vscode.workspace.onDidSaveTextDocument(validateDocument)
+        vscode.workspace.onDidSaveTextDocument(validateDocument),
+        vscode.workspace.onDidCloseTextDocument(document => { diagnosticProvider.clear(document.uri); lintProvider.clear(document.uri); }),
+        vscode.workspace.onDidChangeConfiguration(event => {
+            if (event.affectsConfiguration('tcl')) for (const document of vscode.workspace.textDocuments) void validateDocument(document);
+        })
     );
 
     for (const doc of vscode.workspace.textDocuments) {
@@ -80,7 +86,11 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(symbolTableCache);
 
     // Register IntelliSense providers
-    const completionProvider = new TclCompletionItemProvider();
+    const completionProvider = new TclCompletionItemProvider(async document => {
+        await ensurePhase6Initialized();
+        await packageManager?.ensurePackages(document.uri);
+        return packageManager?.getPackages(document.uri).map(pkg => pkg.name) ?? [];
+    });
     const hoverProvider = new TclHoverProvider(symbolTableCache);
     const definitionProvider = new TclDefinitionProvider();
     const referenceProvider = new TclReferenceProvider(symbolTableCache);
@@ -136,7 +146,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register format on save if enabled (disabled by default)
     context.subscriptions.push(
         vscode.workspace.onWillSaveTextDocument((event) => {
-            const config = vscode.workspace.getConfiguration('tcl');
+            const config = vscode.workspace.getConfiguration('tcl', event.document.uri);
             const formatOnSave = config.get<boolean>('format.enable', false);
             
             if (formatOnSave && event.document.languageId === 'tcl') {
@@ -165,34 +175,21 @@ export async function activate(context: vscode.ExtensionContext) {
     replCommands.registerCommands(context);
 
     // Register Phase 5 features: Testing Support
-    const testProvider = new TclTestProvider();
-    activeTestProvider = testProvider;
-    await testProvider.discoverAllTests();
-
     const coverageProvider = new TclCoverageProvider();
     activeCoverageProvider = coverageProvider;
-    
+    const testProvider = new TclTestProvider(coverageProvider);
+    activeTestProvider = testProvider;
+    void testProvider.discoverAllTests();
+    const codeLensProvider = new TclCodeLensProvider(workspaceIndex,
+        document => testProvider.getTestLenses(document), testProvider.onDidChangeTests);
+    context.subscriptions.push(codeLensProvider, vscode.languages.registerCodeLensProvider('tcl', codeLensProvider));
+
     context.subscriptions.push(
-        vscode.commands.registerCommand('tcl.runTests', () => {
-            vscode.commands.executeCommand('testing.runAll');
-        }),
-
-        vscode.commands.registerCommand('tcl.generateCoverage', async () => {
-            const testFiles = await vscode.workspace.findFiles('**/*.{test,tcl}');
-            if (testFiles.length === 0) {
-                vscode.window.showInformationMessage('No test files found');
-                return;
-            }
-            await coverageProvider.generateCoverage(testFiles.map(f => f.fsPath));
-        }),
-
-        vscode.commands.registerCommand('tcl.clearCoverage', () => {
-            coverageProvider.clearCoverage();
-        }),
-
-        vscode.commands.registerCommand('tcl.exportCoverageReport', () => {
-            coverageProvider.exportCoverageReport();
-        })
+        vscode.commands.registerCommand('tcl.runTests', () => testProvider.runTestItem()),
+        vscode.commands.registerCommand('tcl.runTestItem', (id: string, mode: 'run' | 'debug') => testProvider.runTestItem(id, mode)),
+        vscode.commands.registerCommand('tcl.generateCoverage', () => testProvider.runTestItem(undefined, 'coverage')),
+        vscode.commands.registerCommand('tcl.clearCoverage', () => coverageProvider.clearCoverage()),
+        vscode.commands.registerCommand('tcl.exportCoverageReport', () => coverageProvider.exportCoverageReport())
     );
 
     // Register Phase 5 features: Refactoring
@@ -227,79 +224,58 @@ export async function activate(context: vscode.ExtensionContext) {
     let interpreterManager: TclInterpreterManager | undefined;
     let packageManager: TclPackageManager | undefined;
     let projectTemplates: TclProjectTemplates | undefined;
-    let taskProvider: TclTaskProviderManager | undefined;
     let dependencyManager: TclDependencyManager | undefined;
-    let phase6Initialized = false;
-
-    const ensurePhase6Initialized = async () => {
-        if (phase6Initialized) return;
-
-        try {
-            interpreterManager = new TclInterpreterManager();
-            packageManager = new TclPackageManager();
-            projectTemplates = new TclProjectTemplates();
-            taskProvider = new TclTaskProviderManager();
-            dependencyManager = new TclDependencyManager(packageManager);
-
-            await interpreterManager.initialize();
-            await packageManager.initialize();
-            await dependencyManager.initialize();
-            taskProvider.register(context);
-
-            phase6Initialized = true;
-
-            // Add to disposal
-            context.subscriptions.push(interpreterManager, packageManager, dependencyManager, taskProvider);
-        } catch (error) {
-            console.error('Phase 6 initialization failed:', error);
-
-            // Clean up any partially initialized managers
+    let phase6Initialization: Promise<void> | undefined;
+    const ensurePhase6Initialized = (): Promise<void> => {
+        if (phase6Initialization) return phase6Initialization;
+        phase6Initialization = (async () => {
             try {
-                interpreterManager?.dispose();
-            } catch { /* ignore */ }
-            try {
-                packageManager?.dispose();
-            } catch { /* ignore */ }
-            try {
-                dependencyManager?.dispose();
-            } catch { /* ignore */ }
-            try {
-                taskProvider?.dispose();
-            } catch { /* ignore */ }
-
-            // Reset managers to undefined
-            interpreterManager = undefined;
-            packageManager = undefined;
-            projectTemplates = undefined;
-            taskProvider = undefined;
-            dependencyManager = undefined;
-
-            // Show error to user
-            vscode.window.showErrorMessage(`Failed to initialize TCL tools: ${error}`);
-        }
+                interpreterManager = new TclInterpreterManager();
+                packageManager = new TclPackageManager();
+                projectTemplates = new TclProjectTemplates();
+                dependencyManager = new TclDependencyManager(packageManager);
+                await interpreterManager.initialize();
+                await packageManager.initialize();
+                await dependencyManager.initialize();
+                context.subscriptions.push(interpreterManager, packageManager, dependencyManager);
+            } catch (error) {
+                interpreterManager?.dispose(); packageManager?.dispose(); dependencyManager?.dispose();
+                interpreterManager = undefined; packageManager = undefined; dependencyManager = undefined;
+                projectTemplates = undefined; phase6Initialization = undefined;
+                console.error('Failed to initialize TCL tools', error);
+                throw error;
+            }
+        })();
+        return phase6Initialization;
     };
+    const taskProvider = new TclTaskProviderManager(async resource => {
+        await ensurePhase6Initialized();
+        return dependencyManager?.installDependencies(resource);
+    });
+    taskProvider.register(context);
+    context.subscriptions.push(taskProvider);
 
     context.subscriptions.push(
         // Interpreter management commands
         vscode.commands.registerCommand('tcl.selectInterpreter', async () => {
             await ensurePhase6Initialized();
-            interpreterManager?.selectInterpreter();
+            return interpreterManager?.selectInterpreter();
         }),
 
         vscode.commands.registerCommand('tcl.addCustomInterpreter', async () => {
             await ensurePhase6Initialized();
-            interpreterManager?.addCustomInterpreter();
+            return interpreterManager?.addCustomInterpreter();
         }),
 
         vscode.commands.registerCommand('tcl.refreshInterpreters', async () => {
             await ensurePhase6Initialized();
-            interpreterManager?.refreshInterpreters();
+            return interpreterManager?.refreshInterpreters();
         }),
 
         // Package management commands
         vscode.commands.registerCommand('tcl.createPackage', async () => {
             await ensurePhase6Initialized();
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+            const workspaceFolder = resolveTclFolder(activeTclResource());
             if (workspaceFolder && packageManager) {
                 await packageManager.createPackageTcl(workspaceFolder.uri.fsPath);
             } else if (!workspaceFolder) {
@@ -309,34 +285,34 @@ export async function activate(context: vscode.ExtensionContext) {
 
         vscode.commands.registerCommand('tcl.updatePackageIndex', async () => {
             await ensurePhase6Initialized();
-            packageManager?.updatePackageIndex();
+            return packageManager?.updatePackageIndex();
         }),
 
         // Project template commands
         vscode.commands.registerCommand('tcl.newProject', async () => {
             await ensurePhase6Initialized();
-            projectTemplates?.showProjectWizard();
+            return projectTemplates?.showProjectWizard();
         }),
 
         // Dependency management commands
-        vscode.commands.registerCommand('tcl.installDependencies', async () => {
+        vscode.commands.registerCommand('tcl.installDependencies', async (resource?: vscode.Uri) => {
             await ensurePhase6Initialized();
-            dependencyManager?.installDependencies();
+            return dependencyManager?.installDependencies(resource);
         }),
 
         vscode.commands.registerCommand('tcl.updateDependencies', async () => {
             await ensurePhase6Initialized();
-            dependencyManager?.updateDependencies();
+            return dependencyManager?.updateDependencies();
         }),
 
         vscode.commands.registerCommand('tcl.refreshDependencies', async () => {
             await ensurePhase6Initialized();
-            dependencyManager?.refreshDependencies();
+            return dependencyManager?.refreshDependencies();
         }),
 
         vscode.commands.registerCommand('tcl.createDependencyReport', async () => {
             await ensurePhase6Initialized();
-            dependencyManager?.createDependencyReport();
+            return dependencyManager?.createDependencyReport();
         }),
 
         // Task and run commands

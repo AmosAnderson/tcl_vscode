@@ -5,13 +5,8 @@ import * as fs from 'fs';
 import { createTempTclPath } from '../utils/tclUtils';
 import { createCoverageExecutionScript, COVERAGE_BEGIN, COVERAGE_END } from './coverageExecution';
 
-interface CoverageData {
-    file: string;
-    lines: Map<number, { count: number; covered: boolean }>;
-    totalLines: number;
-    coveredLines: number;
-    percentage: number;
-}
+import { CoverageData, parseCoverageReports } from './coverageResults';
+export { CoverageData } from './coverageResults';
 
 export class TclCoverageProvider {
     private _outputChannel: vscode.OutputChannel;
@@ -21,6 +16,7 @@ export class TclCoverageProvider {
     private _disposables: vscode.Disposable[] = [];
     private _runningProcesses = new Set<ChildProcess>();
     private _testErrors = '';
+    private _statusMessage: vscode.Disposable | undefined;
 
     constructor() {
         this._outputChannel = vscode.window.createOutputChannel('TCL Coverage');
@@ -136,54 +132,20 @@ export class TclCoverageProvider {
         });
     }
 
-    private parseCoverageResults(results: string): void {
-        this._coverageData.clear();
-        
-        const begin = results.lastIndexOf(COVERAGE_BEGIN);
-        const end = results.indexOf(COVERAGE_END, begin);
-        if (begin < 0 || end < 0) {
-            throw new Error('Coverage process did not produce a complete report');
-        }
-        const lines = results.slice(begin + COVERAGE_BEGIN.length, end).split(/\r?\n/);
-        let currentFile = '';
-        
-        for (const line of lines) {
-            if (line.startsWith('FILEHEX:')) {
-                currentFile = path.normalize(Buffer.from(line.substring(8), 'hex').toString('utf8'));
-                if (!this._coverageData.has(currentFile)) {
-                    this._coverageData.set(currentFile, {
-                        file: currentFile,
-                        lines: new Map(),
-                        totalLines: 0,
-                        coveredLines: 0,
-                        percentage: 0
-                    });
-                }
-            } else if (line.startsWith('LINE:') && currentFile) {
-                const parts = line.substring(5).split(':');
-                if (parts.length >= 2) {
-                    const lineNum = parseInt(parts[0]);
-                    const count = parseInt(parts[1]);
-                    if (!Number.isInteger(lineNum) || lineNum < 1 || !Number.isInteger(count) || count < 0) { continue; }
-                    
-                    const coverage = this._coverageData.get(currentFile)!;
-                    coverage.lines.set(lineNum, {
-                        count: count,
-                        covered: count > 0
-                    });
-                }
-            }
-        }
+    public recordCoverage(results: string, append = true): void {
+        this.parseCoverageResults(results, append);
+        this.updateCoverageDisplay();
+        const entries = this.getCoverageData();
+        const total = entries.reduce((sum, entry) => sum + entry.totalLines, 0);
+        const covered = entries.reduce((sum, entry) => sum + entry.coveredLines, 0);
+        this.setCoverageStatus(`Coverage: ${(total ? covered / total * 100 : 0).toFixed(1)}%`, 5000);
+    }
 
-        // Calculate coverage percentages
-        for (const coverage of this._coverageData.values()) {
-            coverage.totalLines = coverage.lines.size;
-            coverage.coveredLines = Array.from(coverage.lines.values())
-                .filter(line => line.covered).length;
-            coverage.percentage = coverage.totalLines > 0 
-                ? (coverage.coveredLines / coverage.totalLines) * 100 
-                : 0;
-        }
+    public getCoverageData(): CoverageData[] { return [...this._coverageData.values()]; }
+
+    private parseCoverageResults(results: string, append = false): void {
+        const parsed = parseCoverageReports([results], append ? this.getCoverageData() : []);
+        this._coverageData = new Map(parsed.map(entry => [entry.file, entry]));
     }
 
     private updateCoverageDisplay(): void {
@@ -259,10 +221,15 @@ export class TclCoverageProvider {
         this._outputChannel.show();
 
         // Show status bar message
-        vscode.window.setStatusBarMessage(
+        this.setCoverageStatus(
             `Coverage: ${overallPercentage.toFixed(1)}%`,
             5000
         );
+    }
+
+    private setCoverageStatus(message: string, timeout: number): void {
+        this._statusMessage?.dispose();
+        this._statusMessage = vscode.window.setStatusBarMessage(message, timeout);
     }
 
     public clearCoverage(): void {
@@ -276,7 +243,7 @@ export class TclCoverageProvider {
         });
 
         this._outputChannel.clear();
-        vscode.window.setStatusBarMessage('Coverage cleared', 2000);
+        this.setCoverageStatus('Coverage cleared', 2000);
     }
 
     public async exportCoverageReport(): Promise<void> {
@@ -402,6 +369,8 @@ export class TclCoverageProvider {
             try { process.kill('SIGKILL'); } catch { /* already exited */ }
         }
         this._runningProcesses.clear();
+        this._statusMessage?.dispose();
+        this._statusMessage = undefined;
         this._disposables.forEach(d => d.dispose());
         this._disposables = [];
         this._outputChannel.dispose();

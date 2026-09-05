@@ -1,296 +1,77 @@
 import * as vscode from 'vscode';
-import { countBackslashes, computeMultilineStringLines } from '../utils/tclUtils';
+import { getScriptWords, isStaticWord, parseTclList, parseTclScript, walkTclCommands } from '../utils/tclParser';
+import { DocumentSymbolTable } from '../analysis/symbolTable';
 
-export class TclLintProvider {
-    private diagnosticCollection: vscode.DiagnosticCollection;
+export class TclLintProvider implements vscode.Disposable {
+    private readonly collection = vscode.languages.createDiagnosticCollection('tcl-lint');
 
-    constructor() {
-        this.diagnosticCollection = vscode.languages.createDiagnosticCollection('tcl-lint');
-    }
-
-    public lint(document: vscode.TextDocument): void {
-        if (document.languageId !== 'tcl') {
-            return;
-        }
-
-        const config = vscode.workspace.getConfiguration('tcl');
-        const lintEnabled = config.get<boolean>('lint.enable', true);
-
-        if (!lintEnabled) {
-            this.diagnosticCollection.delete(document.uri);
-            return;
-        }
-
-        const diagnostics: vscode.Diagnostic[] = [];
-        const text = document.getText();
-        const lines = text.split('\n');
-        const insideString = computeMultilineStringLines(lines);
-
-        this.checkExprBracing(lines, diagnostics, config, insideString);
-        this.checkMissingSwitchDefault(text, lines, diagnostics, insideString);
-        this.checkCatchWithoutVariable(lines, diagnostics, insideString);
-        this.checkLineLength(lines, diagnostics, config);
-        this.checkDeprecatedCommands(lines, diagnostics, insideString);
-        this.checkGlobalVariableShorthand(text, lines, diagnostics);
-
-        this.diagnosticCollection.set(document.uri, diagnostics);
-    }
-
-    private checkExprBracing(lines: string[], diagnostics: vscode.Diagnostic[], config: vscode.WorkspaceConfiguration, insideString: boolean[]): void {
-        if (!config.get<boolean>('lint.exprBracing', true)) {
-            return;
-        }
-
-        for (let i = 0; i < lines.length; i++) {
-            if (insideString[i]) continue;
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            // Skip comments and empty lines
-            if (trimmed.startsWith('#') || trimmed.length === 0) {
-                continue;
-            }
-
-            // Match expr that is not followed by a brace
-            // Handle: expr $a + $b, expr 1+2, but not expr {$a + $b}
-            const exprMatch = line.match(/\bexpr\s+(?!\{)(\S)/);
-            if (exprMatch) {
-                const idx = line.indexOf(exprMatch[0]);
-                const range = new vscode.Range(i, idx, i, idx + exprMatch[0].length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    'expr argument should be braced to prevent double substitution and improve performance',
-                    vscode.DiagnosticSeverity.Warning
-                );
-                diagnostic.code = 'tcl-lint-expr-bracing';
-                diagnostic.source = 'tcl-lint';
-                diagnostics.push(diagnostic);
-            }
-        }
-    }
-
-    private checkMissingSwitchDefault(text: string, lines: string[], diagnostics: vscode.Diagnostic[], insideString: boolean[]): void {
-        // Find switch statements and check for default clause
-        for (let i = 0; i < lines.length; i++) {
-            if (insideString[i]) continue;
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            // Match switch command (with possible flags)
-            const switchMatch = trimmed.match(/^\s*switch\b/);
-            if (!switchMatch) {
-                continue;
-            }
-
-            // Scan forward to find the switch body and check for 'default'
-            let braceDepth = 0;
-            let foundOpenBrace = false;
-            let foundDefault = false;
-
-            for (let j = i; j < lines.length; j++) {
-                const scanLine = lines[j];
-                let inString = false;
-                for (let c = 0; c < scanLine.length; c++) {
-                    const ch = scanLine[c];
-
-                    if (ch === '"' || ch === '{' || ch === '}') {
-                        if (countBackslashes(scanLine, c) % 2 === 1) continue;
-                    }
-
-                    if (ch === '"') {
-                        inString = !inString;
-                    } else if (!inString) {
-                        if (ch === '{') {
-                            braceDepth++;
-                            foundOpenBrace = true;
-                        } else if (ch === '}') {
-                            braceDepth--;
-                        }
-                    }
+    public lint(document: vscode.TextDocument): vscode.Diagnostic[] {
+        if (document.languageId !== 'tcl') return [];
+        const config = vscode.workspace.getConfiguration('tcl', document.uri);
+        if (!config.get<boolean>('lint.enable', true)) { this.clear(document.uri); return []; }
+        const text = document.getText(), diagnostics: vscode.Diagnostic[] = [];
+        const rules = config.get<Record<string, string>>('lint.rules', {});
+        const suppressed = new Map<number, Set<string>>();
+        const comments = (from: number, to: number): void => {
+            let cursor = from;
+            const parsed = parseTclScript(text, from, to);
+            const gap = (end: number) => {
+                const value = text.slice(cursor, end);
+                for (const match of value.matchAll(/#\s*tcl-lint-disable-next-line\s+([^\r\n]+)/g)) {
+                    const line = document.positionAt(cursor + match.index!).line + 1;
+                    suppressed.set(line, new Set(match[1].trim().split(/[\s,]+/)));
                 }
-
-                if (scanLine.match(/\bdefault\b/)) {
-                    foundDefault = true;
-                }
-
-                if (foundOpenBrace && braceDepth === 0) {
-                    break;
-                }
+            };
+            for (const command of parsed.commands) { gap(command.start); cursor = command.end; for (const body of getScriptWords(command)) comments(body.contentStart, body.contentEnd); }
+            gap(to);
+        };
+        comments(0, text.length);
+        const add = (rule: string, start: number, end: number, message: string, fallback = vscode.DiagnosticSeverity.Warning) => {
+            const position = document.positionAt(start), disabled = suppressed.get(position.line);
+            if (rules[rule] === 'off' || disabled?.has(rule) || disabled?.has('all')) return;
+            const severities: Record<string, vscode.DiagnosticSeverity> = { error: 0, warning: 1, information: 2, hint: 3 };
+            const diagnostic = new vscode.Diagnostic(new vscode.Range(position, document.positionAt(end)), message, severities[rules[rule]] ?? fallback);
+            diagnostic.code = `tcl-lint-${rule}`; diagnostic.source = 'tcl-lint'; diagnostics.push(diagnostic);
+        };
+        for (const command of walkTclCommands(text)) {
+            const w = command.words;
+            if (!isStaticWord(w[0]) || w.some(word => word.expanded)) continue;
+            const name = w[0].value.replace(/^::/, '');
+            if (name === 'expr' && w.length > 1 && !(w.length === 2 && w[1].kind === 'braced') && config.get<boolean>('lint.exprBracing', true)) {
+                add('expr-bracing', command.start, command.end, 'Consider bracing the expr argument to avoid double substitution');
             }
-
-            if (foundOpenBrace && !foundDefault) {
-                const idx = line.indexOf('switch');
-                const range = new vscode.Range(i, idx, i, idx + 6);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    'switch statement has no default clause',
-                    vscode.DiagnosticSeverity.Information
-                );
-                diagnostic.code = 'tcl-lint-switch-default';
-                diagnostic.source = 'tcl-lint';
-                diagnostics.push(diagnostic);
-            }
-        }
-    }
-
-    private checkCatchWithoutVariable(lines: string[], diagnostics: vscode.Diagnostic[], insideString: boolean[]): void {
-        for (let i = 0; i < lines.length; i++) {
-            if (insideString[i]) continue;
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            if (trimmed.startsWith('#') || trimmed.length === 0) {
-                continue;
-            }
-
-            // Match catch with a body but no result variable
-            // catch {script} -> warning
-            // catch {script} result -> ok
-            // catch {script} result opts -> ok
-            const catchMatch = trimmed.match(/\bcatch\s+\{[^}]*\}\s*$/);
-            if (catchMatch) {
-                const idx = line.indexOf('catch');
-                const range = new vscode.Range(i, idx, i, line.length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    'catch without result variable — errors will be silently ignored',
-                    vscode.DiagnosticSeverity.Warning
-                );
-                diagnostic.code = 'tcl-lint-catch-no-var';
-                diagnostic.source = 'tcl-lint';
-                diagnostics.push(diagnostic);
-            }
-        }
-    }
-
-    private checkLineLength(lines: string[], diagnostics: vscode.Diagnostic[], config: vscode.WorkspaceConfiguration): void {
-        const maxLength = config.get<number>('lint.maxLineLength', 120);
-        if (maxLength <= 0) {
-            return;
-        }
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (line.length > maxLength) {
-                const range = new vscode.Range(i, maxLength, i, line.length);
-                const diagnostic = new vscode.Diagnostic(
-                    range,
-                    `Line exceeds ${maxLength} characters (${line.length})`,
-                    vscode.DiagnosticSeverity.Information
-                );
-                diagnostic.code = 'tcl-lint-line-length';
-                diagnostic.source = 'tcl-lint';
-                diagnostics.push(diagnostic);
-            }
-        }
-    }
-
-    private checkDeprecatedCommands(lines: string[], diagnostics: vscode.Diagnostic[], insideString: boolean[]): void {
-        const deprecated: { pattern: RegExp; message: string }[] = [
-            { pattern: /\bstring\s+bytelength\b/, message: "'string bytelength' is deprecated since TCL 8.6 — use 'string length' with encoding" },
-            { pattern: /\bstring\s+wordend\b/, message: "'string wordend' is deprecated — use 'tcl_wordBreakAfter' or regexp" },
-            { pattern: /\bstring\s+wordstart\b/, message: "'string wordstart' is deprecated — use 'tcl_wordBreakBefore' or regexp" },
-        ];
-
-        for (let i = 0; i < lines.length; i++) {
-            if (insideString[i]) continue;
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            if (trimmed.startsWith('#') || trimmed.length === 0) {
-                continue;
-            }
-
-            for (const { pattern, message } of deprecated) {
-                const match = line.match(pattern);
-                if (match) {
-                    const idx = line.indexOf(match[0]);
-                    const range = new vscode.Range(i, idx, i, idx + match[0].length);
-                    const diagnostic = new vscode.Diagnostic(
-                        range,
-                        message,
-                        vscode.DiagnosticSeverity.Warning
-                    );
-                    diagnostic.code = 'tcl-lint-deprecated';
-                    diagnostic.source = 'tcl-lint';
-                    diagnostics.push(diagnostic);
+            if (name === 'catch' && w.length === 2) add('catch-no-var', command.start, command.end, 'catch without a result variable discards the error message');
+            if (name === 'string' && ['bytelength', 'wordend', 'wordstart'].includes(w[1]?.value)) add('deprecated', command.start, w[1].end, `Review use of legacy command 'string ${w[1].value}'`);
+            if (name === 'switch') {
+                let i = 1;
+                while (w[i]?.value.startsWith('-')) { const option = w[i++].value; if (option === '--') break; if (['-matchvar', '-indexvar'].includes(option)) i++; }
+                i++;
+                const parsed = w.length - i === 1 && w[i].kind === 'braced' ? parseTclList(text, w[i].contentStart, w[i].contentEnd) : { words: w.slice(i), errors: [] };
+                if (!parsed.errors.length && parsed.words.length >= 2 && parsed.words.length % 2 === 0 && !parsed.words.some((word, index) => index % 2 === 0 && isStaticWord(word) && word.value === 'default')) {
+                    add('switch-default', command.start, w[0].end, 'switch statement has no default clause', vscode.DiagnosticSeverity.Information);
                 }
             }
         }
-    }
-
-    private checkGlobalVariableShorthand(text: string, lines: string[], diagnostics: vscode.Diagnostic[]): void {
-        // Find proc bodies and check for repeated $::varName usage
-        // Suggest using 'global varName' or 'variable varName' instead
-        let inProc = false;
-        let procStart = 0;
-        let braceDepth = 0;
-        const globalVarUsages = new Map<string, { line: number; col: number }[]>();
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const trimmed = line.trim();
-
-            if (trimmed.match(/^\s*proc\s+/)) {
-                inProc = true;
-                procStart = i;
-                braceDepth = 0;
-                globalVarUsages.clear();
-            }
-
-            if (inProc) {
-                let inString = false;
-                for (let c = 0; c < line.length; c++) {
-                    const ch = line[c];
-
-                    if (ch === '"' || ch === '{' || ch === '}') {
-                        if (countBackslashes(line, c) % 2 === 1) continue;
-                    }
-
-                    if (ch === '"') {
-                        inString = !inString;
-                    } else if (!inString) {
-                        if (ch === '{') braceDepth++;
-                        if (ch === '}') braceDepth--;
-                    }
-                }
-
-                // Find $::varName references
-                const globalRefs = line.matchAll(/\$::(\w+)/g);
-                for (const ref of globalRefs) {
-                    const varName = ref[1];
-                    if (!globalVarUsages.has(varName)) {
-                        globalVarUsages.set(varName, []);
-                    }
-                    globalVarUsages.get(varName)!.push({ line: i, col: ref.index! });
-                }
-
-                // End of proc body
-                if (braceDepth === 0 && i > procStart) {
-                    // Warn for variables used 3+ times with $:: prefix
-                    for (const [varName, usages] of globalVarUsages) {
-                        if (usages.length >= 3) {
-                            const first = usages[0];
-                            const range = new vscode.Range(first.line, first.col, first.line, first.col + varName.length + 3);
-                            const diagnostic = new vscode.Diagnostic(
-                                range,
-                                `'$::${varName}' used ${usages.length} times — consider 'global ${varName}' at proc start`,
-                                vscode.DiagnosticSeverity.Information
-                            );
-                            diagnostic.code = 'tcl-lint-global-shorthand';
-                            diagnostic.source = 'tcl-lint';
-                            diagnostics.push(diagnostic);
-                        }
-                    }
-
-                    inProc = false;
-                    globalVarUsages.clear();
-                }
-            }
+        const maximum = config.get<number>('lint.maxLineLength', 120);
+        if (maximum > 0) for (let line = 0; line < document.lineCount; line++) {
+            const value = document.lineAt(line);
+            if (value.text.length > maximum) add('line-length', document.offsetAt(new vscode.Position(line, maximum)), document.offsetAt(value.range.end), `Line exceeds ${maximum} characters`, vscode.DiagnosticSeverity.Information);
         }
+        const table = new DocumentSymbolTable(document); table.parse();
+        const globals = new Map<string, ReturnType<DocumentSymbolTable['getVariableUsages']>>();
+        for (const usage of table.getVariableUsages()) {
+            const scope = table.getScopeAt(usage.range.start);
+            if (!usage.name.startsWith('::') || scope.kind !== 'procedure') continue;
+            const key = `${scope.range.start.line}:${scope.range.start.character}:${usage.name}`;
+            const items = globals.get(key) ?? []; items.push(usage); globals.set(key, items);
+        }
+        for (const usages of globals.values()) if (usages.length >= 3) {
+            add('global-shorthand', document.offsetAt(usages[0].range.start), document.offsetAt(usages[0].range.end), `Consider a global declaration for repeated '${usages[0].name}' references`, vscode.DiagnosticSeverity.Information);
+        }
+        this.collection.set(document.uri, diagnostics);
+        return diagnostics;
     }
 
-    public dispose(): void {
-        this.diagnosticCollection.dispose();
-    }
+    public clear(uri: vscode.Uri): void { this.collection.delete(uri); }
+    public dispose(): void { this.collection.dispose(); }
 }

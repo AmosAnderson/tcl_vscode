@@ -1,5 +1,7 @@
 # TCL Language Support - User Guide
 
+This guide describes TCL Syntax **0.8.0**.
+
 ## Table of Contents
 1. [Getting Started](#getting-started)
 2. [Features Overview](#features-overview)
@@ -10,15 +12,16 @@
 ## Getting Started
 
 ### Requirements
-- Visual Studio Code **1.120.0** or higher
-- Node.js **18 LTS** (only required for local development workflows such as cloning and running `npm install`)
-- A TCL interpreter (`tclsh`) on your PATH for diagnostics, REPL, and testing commands
+- Visual Studio Code **1.136.0** or higher
+- Node.js **22.12+** (only required for local development workflows such as cloning and running `npm ci`)
+- A TCL interpreter (`tclsh`) on your PATH or configured in settings for execution, debugging, REPL, tests, package tools, and interpreter completeness checks. Debugging, coverage, and Inline Procedure require Tcl 8.5+. Static editing features work without Tcl installed.
 
 ### Installation
-1. Open VS Code
-2. Go to Extensions (Ctrl+Shift+X / Cmd+Shift+X)
-3. Search for "TCL Syntax"
-4. Click Install
+1. Download `tcl-syntax-0.8.0.vsix` from [GitHub Releases](https://github.com/AmosAnderson/tcl_vscode/releases).
+2. In VS Code, open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P).
+3. Run **Extensions: Install from VSIX...** and choose the downloaded file.
+
+You can also install **TCL Syntax** from the Extensions Marketplace. Marketplace publication is separate, so its available version can differ from GitHub Releases.
 
 ### First Steps
 After installation, the extension automatically activates when you open any TCL file (`.tcl`, `.tk`, `.tm`, `.test`).
@@ -32,15 +35,15 @@ After installation, the extension automatically activates when you open any TCL 
 ## Features Overview
 
 ### 🎨 Syntax Highlighting
-- Complete TCL language support
+- Tcl command, variable, comment, string, and substitution highlighting
 - Namespace and package highlighting
 - Tk widget commands
 - Expect commands
 - String interpolation and escape sequences
 
 ### ✨ IntelliSense
-- **Auto-completion**: 800+ built-in TCL commands with signatures
-- **Hover Information**: Command documentation and variable values
+- **Auto-completion**: 800+ command/subcommand metadata entries, workspace procedures, variables, namespaces, and package names
+- **Hover Information**: Command documentation, procedure arguments, and statically known variable previews
 - **Signature Help**: Parameter hints while typing, with active-argument highlighting
 - **Go to Definition**: Navigate to procedure definitions (F12)
 - **Find References**: Find all usages of procedures (Shift+F12)
@@ -51,21 +54,23 @@ After installation, the extension automatically activates when you open any TCL 
 - Configurable formatting options
 
 ### 🔍 Code Analysis
-- Real-time syntax checking
-- Integration with `tclsh` for validation
-- Quick fixes for common issues
+- Structural checks for malformed commands and missing delimiters
+- Optional `tclsh` command-completeness checks that do not execute document code
+- Separate style linting with configurable rule severity and next-line suppression
+- Quick fixes for supported expression-bracing and `catch` result-variable cases
 
 ### 🐛 Debugging
 - Breakpoints (including conditional breakpoints and logpoints)
-- Variable inspection (with array expansion)
-- Call stack navigation
-- Integrated REPL
-- Run with interpreter / run with args
+- Step in, over, and out; frame-aware locals/globals, array inspection, variable editing, and watches
+- Authenticated attach to the bundled server locally or through an SSH tunnel
+- Optional debugging of newly created Tcl Thread workers in launch sessions
+- Separate REPL and run commands for interactive or task-based execution
 
 ### 🧪 Testing
 - Test discovery and execution
 - Test results in Test Explorer
-- Code coverage analysis
+- Native VS Code command coverage, source decorations, and HTML/JSON reports
+- Matching selected-case behavior for Run, Debug, and Coverage, with cancellation
 
 ### 🔧 Refactoring
 - Rename symbols (F2)
@@ -115,21 +120,23 @@ Hover over any TCL command to see:
 #### Starting the REPL
 1. Open Command Palette (Ctrl+Shift+P)
 2. Run "TCL: Start REPL"
-3. A terminal opens with `tclsh` running
+3. A terminal opens using the active folder’s selected interpreter, unless `tcl.repl.tclPath` explicitly overrides it. Its working directory is the workspace folder, or the script’s directory outside a workspace.
+
+Close and restart the REPL to begin a fresh session. Changing folders or interpreter settings also starts a REPL in the new context.
 
 #### REPL Commands
 - **Evaluate Selection**: Select code and run "TCL: Evaluate Selection in REPL"
 - **Run Current File**: Run "TCL: Run Current File in REPL"
 
-### Code Formatting
 ### Signature Help (Parameter Hints)
 
-Signature Help appears automatically after you type a command name and the opening brace/space for its arguments. To use it effectively:
+Type a recognized command and a space to request parameter hints, or run **Trigger Parameter Hints** from the Command Palette. The default shortcut is **Ctrl+Shift+Space** on Windows/Linux and **Shift+Cmd+Space** on macOS.
 
-1. Begin typing a TCL command such as `string` or `file` and insert a space.
-2. The parameter list pops up showing the active argument position. Use `Tab` or arrow keys to keep typing without dismissing the hint.
-3. Press `Ctrl+Shift+Space` to re-open Signature Help if it closes while you edit.
-4. The feature relies on the built-in command database that ships with the extension, so no external language server is required.
+Hints include built-in commands and resolved workspace procedures. Optional defaults and variadic `args` appear in the signature; multiline calls and command substitutions retain the active argument. No external language server is required.
+
+### Code Formatting
+
+The formatter preserves literal data, comments, and newline style, and formats both argument-form and list-form `switch` bodies. Incomplete syntax is left unchanged. Selection formatting requires complete commands within a known script body and retains their surrounding indentation.
 
 
 #### Format Entire Document
@@ -177,24 +184,32 @@ Example `launch.json`:
 ```
 
 #### Using Breakpoints
-1. Click in the gutter next to line numbers to set breakpoints
+1. Click in the gutter next to line numbers, or press F9, to set breakpoints on executable commands
 2. Right-click a breakpoint to add a condition or log message (logpoint)
 3. Run debug configuration (F5)
-4. Use debug controls to step through code
+4. Use debug controls to step through code and select a Call Stack frame to inspect its variables
+
+See [Debugging Tcl](DEBUGGING.md) for attach, source mapping, Thread workers, and runtime limits.
 
 ### Testing
 
-#### Running Tests
-1. Open Test Explorer in Activity Bar
-2. TCL test files are automatically discovered
-3. Click play button to run tests
+#### Running and Debugging Selected Tests
+
+1. Open Test Explorer in the Activity Bar. Use Refresh to rescan when needed.
+2. Expand a file to see literal `tcltest` declarations or `test_*` procedures. Imported `test` commands and namespace-qualified procedure tests are supported; comments and literal data are ignored.
+3. Choose a case, a file, or all tests, then use **Run TCL Tests**, **Debug TCL Tests**, or **Coverage TCL Tests**. All three profiles respect the same selection and exclusions.
+
+Run/Debug CodeLens actions above discovered tests target the same cases. Dirty test files are saved before execution; a cancelled save skips the case. For debugging, place breakpoints in the original test or implementation source. Procedure tests enter their selected bodies rather than only loading their definitions. Stop cancels the active test process or owned debug session, and subsequent runs can start normally.
+
+Use `tcl.test.tclPath` for an explicit testing interpreter override. When unset, all three profiles use the test file’s project interpreter.
 
 #### Code Coverage
-1. Run "TCL: Generate Test Coverage"
-2. Coverage indicators appear in the editor
-3. Run "TCL: Export Coverage Report" for detailed report
 
-Coverage records commands with original source locations and includes unvisited branches. Dynamically generated code without source locations and nested procedure bodies whose declarations never execute may be omitted from coverage totals.
+1. Choose **Coverage TCL Tests** for the selected cases in Test Explorer, or run **TCL: Generate Test Coverage** for discovered tests.
+2. Inspect native VS Code coverage totals and the extension’s editor decorations.
+3. Run **TCL: Export Coverage Report** for HTML or JSON, or **TCL: Clear Coverage Data** to remove the displayed results.
+
+Coverage runs selected test entry points and records their loaded source files. It does not independently launch ordinary application scripts. Assertion failures retain completed coverage reports, and overlapping runs keep their own native totals. Coverage records commands with original source locations and includes unvisited branches. Dynamically generated code without source locations and nested procedure bodies whose declarations never execute may be omitted from totals.
 
 ### Refactoring
 
@@ -202,9 +217,9 @@ Coverage records commands with original source locations and includes unvisited 
 1. Place cursor on a procedure or variable name
 2. Press F2
 3. Type new name and press Enter
-4. All references are updated
+4. Resolved declarations and references are updated across analyzed workspace files
 
-Note: Built-in TCL commands cannot be renamed.
+Procedures, variables, namespaces, classes, and methods are supported when their bindings can be resolved. Built-in commands and dynamic or ambiguous bindings cannot be renamed.
 
 #### Extract Procedure
 1. Select code block
@@ -224,44 +239,64 @@ Note: Built-in TCL commands cannot be renamed.
 3. The call is replaced with a Tcl lambda that preserves arguments, local variables, and return behavior (Tcl 8.5+).
 
 #### Extract to Namespace
-1. Select code block
+1. Select complete supported procedure definitions
 2. Run "TCL: Extract to Namespace"
-3. Enter namespace name
-4. Code is wrapped in `namespace eval`
+3. Enter a namespace name
+4. Definitions move into `namespace eval`, and resolved callers are updated
+
+Refactoring commands preserve literal values and decline cases whose scope or evaluation behavior cannot be safely represented. Inline Procedure uses `apply`, which requires Tcl 8.5+.
 
 ### Running Scripts
 
-#### Run with Interpreter
-1. Run "TCL: Run with Interpreter"
-2. Select from discovered interpreters
-3. Script runs with the chosen interpreter
+Use **TCL: Run with Interpreter...** to choose an interpreter for one invocation, or **TCL: Run with Arguments...** to run with the project interpreter. Both save the file first and execute a process task; a cancelled or failed save prevents launch.
 
-#### Run with Args
-1. Run "TCL: Run with Args"
-2. Enter command-line arguments
-3. Script runs with the provided arguments
+The argument prompt accepts a JSON array for exact argument values:
+
+```json
+["input with spaces.txt", "", "日本語"]
+```
+
+Quoted arguments such as `one "two three" ""` are also accepted. Shell substitutions and glob patterns remain literal arguments. Configure `tcl.run.args`, `tcl.run.cwd`, and `tcl.run.env` for defaults; enable `tcl.run.rememberArgs` to save entered arguments to the active folder’s settings. The default working directory is the source file’s workspace folder, or its directory outside a workspace. A cwd override can use `${workspaceFolder}` or `${fileDirname}`.
 
 ### Project Management
 
-#### Creating a New Project
-1. Run "TCL: New Project"
-2. Select project template:
-   - Basic TCL Application
-   - Tk GUI Application
-   - TCL Package
-   - Test Suite
-   - Web Server
-3. Choose location and project name
+#### Creating a Project or Package
+
+Run **TCL: New Project**, select Basic TCL Application, Tk GUI Application, TCL Package, Test Suite, or Web Server, then choose a location and project name. The generated project uses that name. Package templates include a matching package index and runnable `run_tests.tcl`/`build.tcl` entry points.
+
+**TCL: Create Package** asks for a package name and version and creates it beneath the active workspace folder. Both creation commands require a new or empty destination and preserve existing files. For generated packages, the source, namespace, tests, index, and documentation use matching names; hyphens in project names become underscores in Tcl namespaces.
 
 #### Managing Interpreters
-1. Run "TCL: Select Interpreter"
-2. Choose from discovered interpreters
-3. Or run "TCL: Add Custom Interpreter" to add custom path
 
-#### Package Management
-- **Create Package**: Run "TCL: Create Package"
-- **Update Index**: Run "TCL: Update Package Index"
-- **Install Dependencies**: Run "TCL: Install Dependencies"
+1. Open a file in the project to configure.
+2. Run **TCL: Select Interpreter** and choose a discovered interpreter.
+3. Use **TCL: Add Custom Interpreter** if the executable is elsewhere.
+
+Selection applies to the active workspace folder, or to user settings when no folder is open. Each folder in a workspace can use a different `tcl.interpreter.path`. Explicit REPL/test settings and debug/task executable overrides still take precedence. Settings changes take effect without reloading the extension.
+
+#### Packages and Dependencies
+
+With `tcl.packages.autoDiscovery` enabled, the extension lazily catalogs package indexes, workspace package metadata, and discoverable modules for the selected interpreter. Package names appear in completion after `package require`, including multiple registrations from one index. Run **TCL: Update Package Index** to force a refresh; explicit refresh/install/update actions remain available when automatic discovery is disabled.
+
+Dependency scanning understands static Tcl requirements, including exact and range constraints:
+
+```tcl
+package require Example 1.0
+package require -exact ExactPackage 2.3
+package require RangePackage 1.0-2.0
+```
+
+Tcl compatibility rules apply: a numerically larger major version does not automatically satisfy a requirement. All requirements for a package in one folder must agree. Dynamic requirements such as `package require $name` remain unknown; conflicts and source locations appear in **TCL: Create Dependency Report**.
+
+Use **TCL: Install Dependencies** to install missing or incompatible dependencies, and **TCL: Update Dependencies** to look for newer compatible versions from available sources. With `teacup` available, installation uses it. Otherwise, select a local package directory or a `.tar`, `.tar.gz`, or `.tgz` archive containing the declared package and a working index. Manual installation requires a writable destination on the selected interpreter’s `auto_path`; `tcl.packages.installDirectory` can choose that destination in advance. Existing destinations are preserved, and successful installation must pass an interpreter load check.
+
+The local archive reader accepts regular files and directories in ustar-compatible archives. Links, special entries, and PAX extensions are unsupported; archives are limited to 64 MiB and 128 MiB after decompression. For other archive formats, extract the package yourself and select its directory.
+
+#### Build and Test Tasks
+
+Use VS Code’s **Tasks: Run Task** or **Tasks: Run Build Task** directly. Tcl tasks are discovered for each workspace folder, including available `build.tcl`, `run_tests.tcl`, Makefile, and package actions. The Install Dependencies task uses the same installer as the command palette. Package archiving requires the system `tar` command.
+
+Custom `type: "tcl"` tasks support `script` or `command`, argument arrays, `cwd`, `env`, and an optional `interpreter` override. The `$tcl` problem matcher links Tcl errors to source locations. See [Run Settings and Tasks](CONFIGURATION.md#run-settings-and-tasks) for a complete `tasks.json` example.
 
 ## Tips and Tricks
 
@@ -290,9 +325,11 @@ Note: Built-in TCL commands cannot be renamed.
 
 3. **Exclude Large Directories**: Add to settings:
    ```json
-   "files.exclude": {
-       "**/large_data": true
-   }
+   "tcl.analysis.exclude": [
+       "**/node_modules/**",
+       "**/.git/**",
+       "**/large_data/**"
+   ]
    ```
 
 ### Common Patterns
@@ -335,7 +372,8 @@ namespace eval ::mypackage {
 
 | Action | Windows/Linux | macOS |
 |--------|--------------|-------|
-| Trigger IntelliSense | Ctrl+Space | Cmd+Space |
+| Trigger IntelliSense | Ctrl+Space | Ctrl+Space |
+| Parameter Hints | Ctrl+Shift+Space | Shift+Cmd+Space |
 | Go to Definition | F12 | F12 |
 | Find References | Shift+F12 | Shift+F12 |
 | Rename Symbol | F2 | F2 |
@@ -348,13 +386,13 @@ namespace eval ::mypackage {
 
 #### Using with Tcllib
 1. Install Tcllib on your system
-2. Extension automatically discovers Tcllib packages
-3. Auto-completion includes Tcllib commands
+2. Ensure the selected interpreter can find Tcllib, then use **TCL: Update Package Index** if needed
+3. Package-name completion includes discovered Tcllib packages
 
 #### Using with Tk
-- Full support for Tk widget commands
-- Syntax highlighting for widget options
-- Auto-completion for widget methods
+- Highlighting and metadata completion for recognized Tk commands
+- Tk widget and layout snippets prefixed with `tk`
+- Running GUI scripts requires an interpreter with Tk and a graphical display; arbitrary widget-instance options and methods are not inferred
 
 #### Using with Expect
 - Syntax highlighting for Expect commands
@@ -402,7 +440,9 @@ namespace eval ::mypackage {
 5. **Test Your Code**: Create test files with `.test` extension
    ```tcl
    # math.test
-   source math.tcl
+   package require tcltest
+   namespace import ::tcltest::*
+   source [file join [file dirname [info script]] math.tcl]
    
    test math-add-1 {Test addition} {
        math::add 2 3
@@ -414,4 +454,4 @@ namespace eval ::mypackage {
 - Read the [Configuration Reference](CONFIGURATION.md) for detailed settings
 - Check the [FAQ](FAQ.md) for common questions
 - Report issues on [GitHub](https://github.com/AmosAnderson/tcl_vscode/issues)
-- Contribute to the project - see [Contributing Guide](CONTRIBUTING.md)
+- Contribute to the project - see [Contributing Guide](../CONTRIBUTING.md)

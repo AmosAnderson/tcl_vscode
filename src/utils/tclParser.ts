@@ -101,7 +101,7 @@ class Parser {
             else this.error(start, 'Unclosed variable name');
             return;
         }
-        const nameLength = /^[\p{L}\p{M}\p{N}_:]+/u.exec(this.text.slice(this.pos, this.end))?.[0].length ?? 0;
+        const nameLength = /^(?:[\p{L}\p{M}\p{N}_]+|:{2,})+/u.exec(this.text.slice(this.pos, this.end))?.[0].length ?? 0;
         if (!nameLength) return;
         this.pos += nameLength;
         if (this.text[this.pos] !== '(') return;
@@ -186,6 +186,15 @@ function listWords(word: TclWord): TclWord[] {
     return result.errors.length ? [] : result.words.map(w => ({ ...w, start: w.start + word.contentStart, end: w.end + word.contentStart, contentStart: w.contentStart + word.contentStart, contentEnd: w.contentEnd + word.contentStart }));
 }
 
+/** A literal lambda is a Tcl list containing parameters, body and optional namespace. */
+export function getLambdaParts(command: TclCommand): TclWord[] {
+    if (!isStaticWord(command.words[0]) || command.words[0].value.replace(/^::/, '') !== 'apply' || command.words.some(word => word.expanded)) return [];
+    const lambda = command.words[1];
+    if (!lambda || lambda.kind !== 'braced') return [];
+    const parts = listWords(lambda);
+    return (parts.length === 2 || parts.length === 3) && parts[0].kind === 'braced' && parts[1].kind === 'braced' && (!parts[2] || isStaticWord(parts[2])) ? parts : [];
+}
+
 /** Statically identifiable script arguments; unrecognized commands are opaque. */
 export function getScriptWords(command: TclCommand): TclWord[] {
     const w = command.words;
@@ -195,6 +204,19 @@ export function getScriptWords(command: TclCommand): TclWord[] {
     switch (name) {
         case 'proc': result = w.length === 4 ? [w[3]] : []; break;
         case 'namespace': if (w[1]?.value === 'eval' && w.length === 4) result = [w[3]]; break;
+        case 'oo::class': case 'oo::object':
+            if (w[1]?.value === 'create' && isStaticWord(w[2]) && w.length === 4) result = [w[3]];
+            break;
+        case 'oo::define': case 'oo::objdefine':
+            if (isStaticWord(w[1]) && w.length === 3) result = [w[2]];
+            else if (w[2]?.value === 'method' && w.length === 6) result = [w[5]];
+            else if (w[2]?.value === 'constructor' && w.length === 5) result = [w[4]];
+            else if (w[2]?.value === 'destructor' && w.length === 4) result = [w[3]];
+            break;
+        case 'method': if (w.length === 4) result = [w[3]]; break;
+        case 'constructor': if (w.length === 3) result = [w[2]]; break;
+        case 'destructor': if (w.length === 2) result = [w[1]]; break;
+        case 'apply': { const lambda = getLambdaParts(command); if (lambda.length) result = [lambda[1]]; break; }
         case 'if': {
             let i = 1;
             while (i < w.length) {

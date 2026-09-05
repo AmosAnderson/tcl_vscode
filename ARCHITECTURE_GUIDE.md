@@ -1,358 +1,123 @@
-# TCL VS Code Extension - Architecture Documentation Guide
-
-## Quick Start: Where to Look
-
-### I want to understand how the extension works
-→ Start with **CLAUDE.md** sections 1-2
-
-### I want to see how components fit together visually
-→ Reference **ARCHITECTURE_DIAGRAM.md**
-
-### I want to understand a specific component
-→ Look it up in **CLAUDE.md** section 2 or ARCHITECTURE_DIAGRAM.md
-
-### I want to understand why a design decision was made
-→ See **CLAUDE.md** section 4 (Non-Obvious Architectural Decisions)
-
-### I want to add a new feature
-→ Follow patterns in **CLAUDE.md** section 8 (Extending the Architecture)
-
-### I want to modify an existing component
-→ Check **CLAUDE.md** section 3 (Data Flows) for side effects
-
----
-
-## Document Overview
-
-### CLAUDE.md (Primary Architecture Document)
-**Purpose:** Complete architectural reference for the extension
-
-**Length:** 983 lines, 32 KB
-
-**Key Sections:**
-- Section 1: Project Summary
-- Section 2: Key Components and Relationships (detailed)
-  - 2.1: Extension Activation
-  - 2.2: IntelliSense Providers (5 types)
-  - 2.3: Formatter Architecture
-  - 2.4: Debug Adapter
-  - 2.5: Testing Framework
-  - 2.6: Coverage Analysis
-  - 2.7: Refactoring Support
-  - 2.8: Tool Managers (5 managers)
-- Section 3: Important Data Flows (4 flows)
-- Section 4: Non-Obvious Architectural Decisions (9 decisions)
-- Section 5: Extension Lifecycle and Cleanup
-- Section 6: Configuration System
-- Section 7: Testing and Development
-- Section 8: Extending the Architecture
-- Section 9: Key Files Reference
-- Section 10: Summary of Key Principles
-
-**Best Used For:**
-- Understanding how specific components work
-- Learning the rationale behind design decisions
-- Following patterns when extending
-- Reference material for implementation details
-
----
-
-### ARCHITECTURE_DIAGRAM.md (Visual Reference)
-**Purpose:** ASCII diagrams of all major architectural components
-
-**Length:** 474 lines, 26 KB
-
-**Key Diagrams:**
-1. Extension Activation Flow (complete with all phases)
-2. Data Layer - Central Knowledge Base (TCL_BUILTIN_COMMANDS structure)
-3. Code Analysis Flow (how 6 analyzers process documents)
-4. Provider Dependencies and Data Sharing
-5. Formatter Architecture (dual-layer design)
-6. Debug Adapter Architecture (protocol and state flow)
-7. Test Execution Flow (discovery and execution)
-8. Lazy Initialization Pattern (Phase 6)
-9. Configuration Dependency Graph
-
-**Best Used For:**
-- Getting a visual overview of component relationships
-- Understanding data flow between components
-- Seeing the "big picture" quickly
-- Reference during discussions about architecture
-
----
-
-## Architecture at a Glance
-
-### Layered Architecture
-
-```
-Extension Entry Point (activate function)
-    ↓
-    ├─ Data Layer (tclCommands.ts)
-    │  └─ Central knowledge base
-    │
-    ├─ Provider Layer (6 providers)
-    │  ├─ Completion
-    │  ├─ Symbols
-    │  ├─ Definition/Reference
-    │  ├─ Hover
-    │  ├─ Diagnostic
-    │  └─ Code Actions
-    │
-    ├─ Feature Layers
-    │  ├─ Formatter (2 layers: VS Code integration + pure logic)
-    │  ├─ Debug (adapter + REPL)
-    │  ├─ Testing (test provider + coverage)
-    │  ├─ Refactoring (rename + extract)
-    │  └─ Tools (5 managers, lazy-loaded)
-    │
-    └─ Configuration System (tcl.* settings)
-```
-
-### Key Design Patterns
-
-1. **Layered Architecture:** Clear separation between data, providers, and features
-2. **Phase-Based Initialization:** Immediate (1-5) vs Lazy (6)
-3. **Single Source of Truth:** TCL_BUILTIN_COMMANDS used by multiple providers
-4. **Event-Driven:** Responds to document changes, user actions, config updates
-5. **Provider Pattern:** Each language feature is a separate provider
-6. **Cache with Single Listener:** Per-document caching with workspace invalidation
-
----
-
-## Component Quick Reference
-
-### Data & Configuration
-- **tclCommands.ts** - 800+ TCL commands (base, additional, Tk, Expect)
-- **Configuration** - 15 user settings (format, diagnostics, lint, paths, packages)
-
-### Analysis Layer
-| Provider | File | Purpose |
-|----------|------|---------|
-| Symbol Table | symbolTable.ts | Scope-aware variable/proc scoping |
-| Symbol Table Cache | symbolTableCache.ts | Per-document cache with invalidation |
-| Workspace Index | workspaceIndex.ts | Workspace-wide proc/namespace index |
-
-### IntelliSense Providers (5 providers)
-| Provider | File | Purpose |
-|----------|------|---------|
-| Completion | completionProvider.ts | Command/proc/var suggestions |
-| Symbol | symbolProvider.ts | Document outline + workspace symbols |
-| Definition | definitionProvider.ts | Go to definition + find references |
-| Hover | hoverProvider.ts | Signature and documentation on hover |
-| Diagnostic | diagnosticProvider.ts | Syntax checking and error reporting |
-
-### Formatting
-| Component | File | Purpose |
-|-----------|------|---------|
-| Format Provider | formattingProvider.ts | VS Code integration layer |
-| Formatter | tclFormatter.ts | Pure formatting logic |
-
-### Debug & REPL
-| Component | File | Purpose |
-|-----------|------|---------|
-| Debug Factory | debugAdapterFactory.ts | Creates debug session |
-| Debug Session | tclDebugAdapter.ts | Debug protocol implementation |
-| REPL | tclREPL.ts | Terminal-based REPL |
-
-### Testing & Coverage
-| Component | File | Purpose |
-|-----------|------|---------|
-| Test Provider | testProvider.ts | Test discovery and execution |
-| Coverage | coverageProvider.ts | Code coverage analysis |
-
-### Refactoring
-| Component | File | Purpose |
-|-----------|------|---------|
-| Rename | renameProvider.ts | Rename procedures/variables |
-| Extract | extractProvider.ts | Extract procedures/variables, inline procedure |
-| Namespace | namespaceProvider.ts | Extract to namespace refactoring |
-
-### Tools (Phase 6 - Lazy Loaded)
-| Component | File | Purpose |
-|-----------|------|---------|
-| Interpreter Mgr | interpreterManager.ts | Find and manage TCL installations |
-| Package Mgr | packageManager.ts | Discover and manage packages |
-| Dependency Mgr | dependencyManager.ts | Track project dependencies |
-| Templates | projectTemplates.ts | Project scaffolding |
-| Tasks | taskProvider.ts | VS Code task integration |
-| Run Commands | runCommands.ts | Run with interpreter/args |
-
----
-
-## Common Tasks & Where to Look
-
-### Understanding a Feature
-1. Read the component section in **CLAUDE.md** Section 2
-2. Check the data flow in **CLAUDE.md** Section 3
-3. Look at visual diagram in **ARCHITECTURE_DIAGRAM.md**
-4. Review the implementation file listed in Section 9
-
-### Adding a New Provider
-1. Read **CLAUDE.md** Section 8 "Adding a New Provider"
-2. Study an existing provider (e.g., HoverProvider)
-3. Implement following the documented pattern
-4. Register in extension.ts following the pattern shown
-
-### Modifying Configuration
-1. Add setting to package.json (contributes.configuration)
-2. Read it in the relevant provider/tool
-3. Update **CLAUDE.md** Section 6 Configuration System
-
-### Extending Tool Managers
-1. Create new manager class with initialize() method
-2. Add to ensurePhase6Initialized() in extension.ts
-3. Register command handlers that call ensurePhase6Initialized()
-4. Follow pattern from existing managers
-
-### Understanding Data Flow
-1. Pick the data flow in **CLAUDE.md** Section 3
-2. Trace the flow diagram
-3. Understand which components interact
-4. Check for side effects on related components
-
----
-
-## Architecture Principles
-
-The extension is built on these 10 principles:
-
-1. **Separation of Concerns:** Each provider handles one language feature
-2. **Single Source of Truth:** TCL commands defined once, used by multiple providers
-3. **Performance through Caching:** Document content cached, invalidated on change
-4. **Lazy Initialization:** Heavy features only initialized when first needed
-5. **Configuration-Driven:** User preferences configure formatting, paths, features
-6. **Terminal-Based Execution:** REPL, testing, debugging use system processes
-7. **Workspace Awareness:** All analysis operates on entire workspace
-8. **Error Handling:** Graceful degradation when optional features unavailable
-9. **Extensibility:** Clear patterns for adding providers, tools, commands
-10. **Event-Driven:** Responds to document changes, user actions, config updates
-
----
-
-## File Structure Summary
-
-```
-src/
-├── extension.ts              # Main entry point and activation
-├── analysis/                 # Semantic analysis
-│   ├── symbolTable.ts        # Scope-aware symbol table
-│   ├── symbolTableCache.ts   # Per-document cache with invalidation
-│   └── workspaceIndex.ts     # Workspace-wide symbol index
-├── data/
-│   └── tclCommands.ts        # Central TCL knowledge base
-├── providers/                # IntelliSense providers (7 files)
-│   ├── completionProvider.ts
-│   ├── symbolProvider.ts
-│   ├── definitionProvider.ts
-│   ├── hoverProvider.ts
-│   ├── diagnosticProvider.ts
-│   ├── lintProvider.ts
-│   └── codeActionProvider.ts
-├── formatter/                # Formatting (2 files)
-│   ├── formattingProvider.ts
-│   └── tclFormatter.ts
-├── debug/                    # Debug & REPL (3 files + scripts)
-│   ├── debugAdapterFactory.ts
-│   ├── tclDebugAdapter.ts
-│   ├── tclREPL.ts
-│   └── scripts/
-│       └── debugServer.tcl
-├── testing/                  # Testing & coverage (2 files)
-│   ├── testProvider.ts
-│   └── coverageProvider.ts
-├── refactoring/              # Refactoring (3 files)
-│   ├── renameProvider.ts
-│   ├── extractProvider.ts
-│   └── namespaceProvider.ts
-├── tools/                    # Tool managers (6 files)
-│   ├── interpreterManager.ts
-│   ├── packageManager.ts
-│   ├── dependencyManager.ts
-│   ├── projectTemplates.ts
-│   ├── taskProvider.ts
-│   └── runCommands.ts
-└── utils/                    # Shared utilities
-    └── tclUtils.ts
-```
-
-Total: 25 implementation files organized in 9 directories
-
----
-
-## When to Reference Each Document
-
-### CLAUDE.md
-- **Sections 1-2:** Getting started, understanding components
-- **Section 3:** Modifying components (check for side effects)
-- **Section 4:** Making architectural decisions
-- **Section 5:** Adding/removing resources
-- **Section 6:** Configuration questions
-- **Section 8:** Adding new functionality
-- **Section 9:** Finding specific files
-- **Section 10:** Core principles
-
-### ARCHITECTURE_DIAGRAM.md
-- **Activation Flow:** Understanding initialization
-- **Data Layer:** Understanding TCL command system
-- **Code Analysis Flow:** Understanding provider pattern
-- **Provider Dependencies:** Understanding relationships
-- **Formatter Architecture:** Understanding formatting
-- **Debug Architecture:** Understanding debugging
-- **Test Execution:** Understanding testing
-- **Lazy Initialization:** Understanding Phase 6
-- **Configuration Graph:** Understanding settings
-
----
-
-## Going Deeper
-
-For complete details on any component, follow this pattern:
-
-1. **Find the Overview** in CLAUDE.md Section 2.X
-2. **Check the Data Flow** in CLAUDE.md Section 3
-3. **Understand the Pattern** in CLAUDE.md Section 4 (if applicable)
-4. **See the Diagram** in ARCHITECTURE_DIAGRAM.md
-5. **Read the Code** in the implementation file
-6. **Check the Tests** in src/test/
-
----
-
-## For Future Development
-
-When adding new features:
-
-1. **Understand the Current Architecture** (read this guide)
-2. **Identify the Architectural Layer** (where does it belong?)
-3. **Follow Established Patterns** (look at similar components)
-4. **Check Data Flows** (what existing data will it need?)
-5. **Update Documentation** (update CLAUDE.md and ARCHITECTURE_DIAGRAM.md)
-
----
-
-## Questions? Check These Sections
-
-**"How does X work?"**
-→ CLAUDE.md Section 2.X and ARCHITECTURE_DIAGRAM.md
-
-**"Why was X designed that way?"**
-→ CLAUDE.md Section 4 (Non-Obvious Architectural Decisions)
-
-**"How does data flow between X and Y?"**
-→ CLAUDE.md Section 3 (Important Data Flows)
-
-**"How do I add a new Y?"**
-→ CLAUDE.md Section 8 (Extending the Architecture)
-
-**"What are the lifecycle implications of changing X?"**
-→ CLAUDE.md Section 5 (Extension Lifecycle and Cleanup)
-
-**"Which files are involved in X?"**
-→ CLAUDE.md Section 9 (Key Files Reference)
-
-**"What settings control X?"**
-→ CLAUDE.md Section 6 (Configuration System)
-
----
-
-This guide is designed to help you quickly find what you need in the architecture documentation. The two main documents (CLAUDE.md and ARCHITECTURE_DIAGRAM.md) provide comprehensive coverage of all aspects of the TCL VS Code extension's architecture.
+# Architecture guide
+
+This guide describes the implemented architecture of TCL Language Support 0.8.0. For usage and settings, start with [README.md](README.md). [ARCHITECTURE_DIAGRAM.md](ARCHITECTURE_DIAGRAM.md) shows the component and execution flows. [AGENTS.md](AGENTS.md) records repository conventions, and [the Insiders verification report](docs/INSIDERS_UI_TEST_REPORT.md) distinguishes observed UI behavior from automated coverage.
+
+## Runtime and activation
+
+The extension runs in the VS Code extension host. It registers VS Code language providers directly; there is no separate language server process. `package.json` declares languages, commands, configuration, tasks, debugger configuration, and Tcl editor breakpoint support. `src/extension.ts` is the runtime entry point. TypeScript compiles to CommonJS in `out/`, with `out/extension.js` as the extension main module.
+
+Activation registers formatting, diagnostics, lint, completion, hover, signature help, navigation, symbols, CodeLens, refactoring, debugging, REPL commands, Testing profiles, and a lightweight native task provider. Workspace indexing and test discovery begin in the background. Diagnostics are refreshed for already open Tcl documents and on open, edit, save, close, or relevant configuration changes.
+
+Interpreter discovery, package discovery, dependencies, project templates, and run commands share `ensurePhase6Initialized()`. This name is retained from the original implementation phases. Initialization uses one promise to coalesce concurrent requests, disposes partially initialized services on failure, and allows a later retry. Package-name completion can also invoke this path when it needs the runtime package catalog.
+
+Native Tasks requests must work immediately after activation. `TclTaskProviderManager` is therefore registered outside lazy initialization; only a task that actually installs dependencies calls the lazy services.
+
+## Syntax, symbols, and shared analysis
+
+| Component | Responsibility |
+| --- | --- |
+| `src/utils/tclParser.ts` | Pure Tcl script/list parsing with source spans, substitutions, executable bodies, expression substitutions, and literal `apply` lambdas. |
+| `src/analysis/procedures.ts` | Walk executable command contexts and qualify or resolve static Tcl procedure and namespace names. |
+| `src/analysis/symbolTable.ts` | Track procedure and lambda parameters, local/global/namespace bindings, supported aliases, declarations, and uses. |
+| `src/analysis/documentAnalysis.ts` | Build a document-version analysis containing contexts, binding data, declarations, parameters, leading documentation comments, package names, namespace directives, and static TclOO declarations. |
+| `src/analysis/symbolTableCache.ts` | Retain the scope-table API used by existing providers/refactorings, keyed by document URI and version, invalidated on change or close. |
+| `src/analysis/workspaceIndex.ts` | Combine document analyses, resolve calls and static TclOO receivers, and cache semantic environments and reference occurrences. |
+| `src/providers/languageFeatures.ts` | Resolve the symbol under a cursor for shared navigation, hover, and refactoring behavior. |
+| `src/data/tclCommands.ts` | Central built-in command, option, signature, documentation, and snippet metadata. |
+
+`analyzeDocument()` caches analysis by URI, document version, and document identity. The workspace index watches `*.tcl`, `*.tk`, `*.tm`, and `*.test`, scans all workspace folders, and honors `tcl.analysis.exclude` and enabled `files.exclude` entries. Edits invalidate semantic and occurrence caches immediately; file indexing is debounced. Open documents, including unsaved changes, override indexed content. Generation counters prevent late asynchronous reads from restoring deleted or superseded results. Folder or exclusion changes trigger rescans.
+
+Static resolution supports namespace-qualified procedures, literal imports/exports and namespace paths, TclOO classes and methods, known object receivers, and unambiguous inheritance. A receiver assigned from a recognizable class construction can be tracked through its binding. Multiple possible receiver types or conflicting inherited methods remain unresolved. Literal `apply` bodies have their own parameter scope.
+
+This is static analysis of recognizable Tcl syntax. It does not execute project code to discover generated commands. Dynamic names, arbitrary `eval`/callbacks, unknown custom control structures, dynamic namespace directives, or ambiguous TclOO dispatch cannot be resolved completely. Parsing treats braced data and executable bodies differently so data strings do not become fictitious declarations or references. Features return the results they can establish; they do not promise runtime equivalence for every Tcl metaprogram.
+
+## Language providers
+
+All registrations remain centralized in `src/extension.ts`.
+
+| Provider files in `src/providers/` | Behavior |
+| --- | --- |
+| `completionProvider.ts` | Contextual commands, options, variables, procedures, namespaces, known methods, snippets, and package names. |
+| `signatureHelpProvider.ts` | Active argument help for built-ins and static declarations, including defaults and variadic parameters. |
+| `hoverProvider.ts` | Built-in documentation and resolved declaration or binding information. |
+| `definitionProvider.ts` | Definitions and references using shared syntax and workspace resolution. |
+| `symbolProvider.ts` | Document outline and workspace symbols, including static TclOO structure. |
+| `codeLensProvider.ts` | Procedure/method reference counts and test Run/Debug actions. Reference counts resolve from the workspace occurrence cache. |
+| `diagnosticProvider.ts` | Structural diagnostics with source locations and an optional debounced Tcl `info complete` check that treats document text as data. |
+| `lintProvider.ts` | Configurable style diagnostics in the separate `tcl-lint` collection. |
+| `codeActionProvider.ts` | Quick fixes associated with supported diagnostics and lint findings. |
+
+Reference CodeLens reacts to index changes; test lenses react to discovery changes. CodeLens configuration changes also invalidate visible lenses. Cancellation is honored by asynchronous provider operations where supported.
+
+## Formatting and refactoring
+
+Formatting has two layers. `src/formatter/formattingProvider.ts` reads resource-scoped settings and VS Code indentation options, then translates results into editor edits. `src/formatter/tclFormatter.ts` performs pure syntax-aware formatting. Document and range formatting share this logic; range formatting uses surrounding document context. Script bodies and switch pattern/body lists are distinguished from literal data, preserving Tcl substitution and data semantics in supported cases.
+
+Refactoring providers live in `src/refactoring/`:
+
+- `renameProvider.ts` implements procedure, variable, namespace, class, and supported method rename paths. Workspace occurrences and binding identity keep edits scoped to the resolved symbol.
+- `extractProvider.ts` implements procedure/variable extraction and procedure/variable inlining. Procedure inlining uses a lambda in the declaration namespace to preserve parameter evaluation and local scope.
+- `variableEdits.ts` and `namespaceEdits.ts` isolate edit planning and checks for the corresponding transformations.
+- `namespaceProvider.ts` presents namespace extraction actions and commands.
+
+These operations produce `WorkspaceEdit` objects. They reject unsupported transformations when scope, control flow, dynamic callbacks, namespace changes, or name collisions prevent a safe edit. Extending a refactoring means extending its analysis and semantic regression fixtures, not applying a workspace-wide text replacement.
+
+## Debugger and REPL
+
+`src/debug/debugAdapterFactory.ts` supplies inline `TclDebugSession` instances and launch configuration resolution. `src/debug/tclDebugAdapter.ts` translates the Debug Adapter Protocol into the Tcl-side protocol implemented by `src/debug/scripts/debugServer.tcl`.
+
+A launch spawns the selected interpreter with the bundled server. The server chooses an ephemeral loopback port and reports it to the adapter. The adapter authenticates with a per-session token, synchronizes breakpoints, and completes configuration before execution resumes. The Tcl server traces execution of original source commands; it does not rewrite every source line with a checkpoint. Source frames are captured before entering the paused event loop.
+
+Supported operations include source breakpoints, conditional breakpoints, logpoints, pause/continue, step in/over/out, stack selection, locals/globals and arrays, variable editing, watches, and expression evaluation. Inspection requests carry frame identity. Adapter frame and variable handles are invalidated when execution resumes or the session ends so stale requests cannot inspect another frame. Step, pause, entry, and breakpoint reasons are propagated to VS Code. A recognized expression and its enclosing whole-value scalar assignment share one stop; arbitrary nested substitutions can still expose multiple command stops on a line.
+
+Attach connects to a compatible authenticated server that has already been started. It accepts loopback addresses; remote use requires a tunnel. `sourceFileMap` translates source prefixes between target and editor. A normal disconnect from an attached process detaches without terminating that process; an explicit termination request can terminate it. Launch sessions own their child process and clean it up on termination.
+
+With `debugThreads: true`, the Tcl server instruments supported `thread::create` calls when the Thread package is available. Worker endpoints appear as separate DAP threads. The parent adapter routes thread, frame, and variable operations to the owning worker, forwards breakpoints, and emits worker lifecycle events. This does not attach arbitrary existing OS threads or discover workers created before instrumentation. Runtime Tcl/Thread support is required.
+
+`src/debug/tclREPL.ts` owns a VS Code terminal running the selected interpreter. The terminal is reused only when its interpreter and working directory match the requested resource. Closing it clears the cached handle, concurrent starts are coordinated, and a subsequent command can create a fresh terminal. Selection/line evaluation and sourcing the current saved file share that lifecycle.
+
+## Testing and coverage
+
+`TclTestProvider` in `src/testing/testProvider.ts` owns the VS Code TestController and Run, Debug, and Coverage profiles. `testDiscovery.ts` parses literal `tcltest::test` declarations, imported `test` declarations, and `test_*` procedures without running their bodies. File and document events refresh discovery, and the provider publishes matching test CodeLens actions.
+
+A request is expanded into a deduplicated set of selected leaf tests with exclusions applied. Tests run sequentially, each with a generated runner. `testExecution.ts` installs the selected-test wrapper before sourcing the file: unselected tcltest bodies do not run, and a selected procedure test is called explicitly. Top-level setup code in the source file still executes. Results preserve passed, failed, and skipped states even when the test file calls `cleanupTests`.
+
+`testProcess.ts` owns each spawned runner, applies the timeout and cancellation, waits for the child to close, and cleans up temporary files. Debug runs use the same selection script through the normal debug adapter and a private result file. The provider tracks only the matching debug session; cancellation stops that session. `testOutput.ts` removes internal result/coverage records from displayed output while raw data remains available for parsing.
+
+Coverage uses `coverageExecution.ts` to trace commands in original source files within the selected workspace root. Tcl disassembly in a separate safe interpreter seeds executable command locations, including unvisited branches and procedure bodies where supported. This provides executable-line coverage, not branch coverage or an inventory of every unvisited project file. Results depend on Tcl's source/bytecode location information.
+
+`coverageResults.ts` parses complete reports, normalizes file paths, and merges counts. `testProvider.ts` publishes native `FileCoverage` and detailed `StatementCoverage` for the current test run. `coverageProvider.ts` also owns source decorations, aggregate status, and HTML/JSON export. Coverage status messages are disposed when replaced or cleared so older messages do not reappear.
+
+## Interpreters, packages, tasks, and projects
+
+`src/tools/executionContext.ts` resolves the resource's workspace folder, working directory, interpreter, and configuration target. Explicit per-feature REPL/test paths and launch/task overrides take precedence; otherwise features use the selected `tcl.interpreter.path`, falling back to `tclsh`. A setting's default must not hide the selected project interpreter. Multi-folder requests use the test, task, or source resource's folder.
+
+| Component in `src/tools/` | Responsibility |
+| --- | --- |
+| `interpreterManager.ts` | Discover system, TclKit, ActiveTcl, and configured interpreters; select and persist the project interpreter. |
+| `packageManager.ts` | Maintain catalogs keyed by folder and interpreter, scan static package metadata and interpreter search paths, refresh catalogs, install and verify packages. |
+| `packageModel.ts` | Parse static registrations, metadata, and requirements while retaining exact, ranged, development, or dynamic requirement information. |
+| `tclProcess.ts` | Run bounded data-query scripts and delegate version compatibility to Tcl's own package commands. |
+| `dependencyManager.ts` | Combine project requirements, identify missing/conflicting/dynamic dependencies, select compatible available updates, and verify installations. |
+| `packageArchive.ts` | Read supported local tar/gzip archives with bounded extraction and validated regular-file/directory paths. |
+| `taskProvider.ts` | Discover and resolve folder-scoped native Tcl tasks, preserve task options, run processes with argument arrays, and clean generated task scripts. |
+| `runArguments.ts`, `runCommands.ts` | Parse run arguments and launch the current file with a selected interpreter or arguments. |
+| `projectTemplates.ts` | Generate project scaffolds and related configuration. |
+
+Package discovery reads literal `pkgIndex.tcl`, `Package.tcl`, and module metadata. It queries the selected interpreter for `auto_path`, Tcl module paths, and already available packages; it does not source each project package merely to build the catalog. Successful installation is separately verified by loading the package with the selected interpreter. Catalogs invalidate on relevant file, folder, interpreter, or package-setting changes.
+
+Installation uses an available `teacup` executable or a user-selected local directory/tar archive. Available updates come from discovered catalogs and optional teacup results. Dynamic requirements remain unknown; the extension does not claim a complete remote package registry or infer compatibility from npm-style semantic version rules.
+
+Tasks use `ProcessExecution` for scripts and external commands, preserving arguments containing spaces or shell metacharacters. Dependency installation uses `CustomExecution` to call the package service. Task discovery includes the current file, recognizable build/test/package files, and Makefile targets. Generated runner files are removed when their task finishes or the provider is disposed.
+
+## Build, validation, and lifecycle
+
+The development toolchain requires Node 22.12 or newer and VS Code 1.136 or newer. `npm run compile` runs the strict TypeScript build and copies Tcl debug scripts into `out/debug/scripts/`; `npm run watch` only watches TypeScript. Never edit generated `out/` files directly.
+
+`npm run lint` runs oxlint. `npm run test:unit` compiles and runs the explicit standalone suite list, including pure parser/formatter/helper tests and real Tcl process fixtures. `npm test` compiles through `pretest`, then runs all suites in an isolated VS Code host with two workspace folders. Both runners accept `TCL_TEST_GREP`. `VSCODE_TEST_VERSION` and `VSCODE_EXECUTABLE_PATH` select the integration host. CI runs checks on Linux, macOS, and Windows; runtime-dependent tests report unavailable interpreter capabilities.
+
+The release workflow validates stable version tags against `main`, the manifest/lockfile, and dated changelog notes. It calls the same three-platform CI workflow, builds the validated commit into a VSIX, and transfers that artifact to a separate publishing job. Build jobs have read-only repository permissions; only publishing receives `contents: write`. The publisher rechecks the exact tag object before creating the GitHub Release. See [CONTRIBUTING.md](CONTRIBUTING.md) for release operation and retries.
+
+Providers, event listeners, watchers, terminals, and service resources are registered for disposal. Deactivation explicitly disposes test, coverage, and debug providers that may own child processes or sockets, then cleans temporary Tcl files. Cache invalidation and cleanup are part of each feature's behavior and should be considered when changing asynchronous code.
+
+When adding a feature, update its manifest contributions and centralized registration, reuse the parser/metadata/analysis layer, keep expensive runtime discovery lazy, and add tests at the layer where the behavior can fail. Native editor or Testing integration requires a VS Code host regression; pure syntax and execution semantics belong in standalone fixtures where possible.

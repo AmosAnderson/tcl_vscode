@@ -4,7 +4,7 @@ export type TclTestKind = 'procedure' | 'tcltest';
 export const TEST_RESULT_PREFIX = '__VSCODE_TCL_TEST_RESULT__:';
 
 /** Run one declaration without relying on tcltest counters after cleanupTests. */
-export function createTestExecutionScript(file: string, name: string, kind: TclTestKind): string {
+export function createTestExecutionScript(file: string, name: string, kind: TclTestKind, options: { exit?: boolean; resultFile?: string } = {}): string {
     return `
 namespace eval ::vscode_test {
     variable status skipped
@@ -56,7 +56,7 @@ if {[catch {source $::vscode_test::file} result]} {
     puts stderr "Test not found: $::vscode_test::selected"
     set ::vscode_test::status failed
 }
-puts "${TEST_RESULT_PREFIX}$::vscode_test::status"
-exit [expr {$::vscode_test::status eq "failed"}]
+${options.resultFile ? `set ::vscode_test::channel [open "${escapeTclString(options.resultFile)}" w]\nputs $::vscode_test::channel $::vscode_test::status\nclose $::vscode_test::channel` : `puts "${TEST_RESULT_PREFIX}$::vscode_test::status"`}
+${options.exit === false ? '' : 'exit [expr {$::vscode_test::status eq "failed"}]'}
 `;
 }

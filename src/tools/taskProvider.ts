@@ -2,6 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { createTempTclPath } from '../utils/tclUtils';
+import { resolveTclCwd, resolveTclFolder, resolveTclInterpreter } from './executionContext';
+import { parsePackageMetadata } from './packageModel';
+import { tclLiteral } from './tclProcess';
+
+const temporaryScripts = new Set<string>();
 
 interface TclTaskDefinition extends vscode.TaskDefinition {
     type: 'tcl';
@@ -9,10 +14,16 @@ interface TclTaskDefinition extends vscode.TaskDefinition {
     command?: string;
     args?: string[];
     cwd?: string;
+    interpreter?: string;
+    env?: Record<string, string>;
 }
 
 export class TclTaskProvider implements vscode.TaskProvider {
-    constructor(private workspaceRoot: string | undefined) {}
+    constructor(private workspaceRoot: string | undefined,
+        private installDependencies: (resource?: vscode.Uri) => Promise<boolean | void> = async resource => vscode.commands.executeCommand('tcl.installDependencies', resource)) {}
+
+    private get resource(): vscode.Uri | undefined { return this.workspaceRoot ? vscode.Uri.file(this.workspaceRoot) : undefined; }
+    private get scope(): vscode.WorkspaceFolder | vscode.TaskScope { return resolveTclFolder(this.resource) ?? vscode.TaskScope.Workspace; }
 
     public provideTasks(): Thenable<vscode.Task[]> | undefined {
         if (!this.workspaceRoot) {
@@ -24,7 +35,16 @@ export class TclTaskProvider implements vscode.TaskProvider {
 
     public resolveTask(task: vscode.Task): vscode.Task | undefined {
         const definition = task.definition as TclTaskDefinition;
-        return this.createTask(definition);
+        if (!definition.script && !definition.command) return undefined;
+        const resolved = this.createTask(definition);
+        resolved.name = task.name;
+        resolved.detail = task.detail;
+        resolved.group = task.group;
+        resolved.presentationOptions = task.presentationOptions;
+        resolved.runOptions = task.runOptions;
+        resolved.isBackground = task.isBackground;
+        resolved.problemMatchers = task.problemMatchers;
+        return resolved;
     }
 
     private async getTclTasks(): Promise<vscode.Task[]> {
@@ -42,37 +62,17 @@ export class TclTaskProvider implements vscode.TaskProvider {
 
     private getDefaultTasks(): vscode.Task[] {
         const tasks: vscode.Task[] = [];
-        
-        // Run current file task
-        const runFileTask = this.createTask({
-            type: 'tcl',
-            script: '${file}',
-            group: 'build'
-        });
-        runFileTask.name = 'Run Current TCL File';
-        runFileTask.group = vscode.TaskGroup.Build;
-        tasks.push(runFileTask);
-        
-        // Run tests task
-        const runTestsTask = this.createTask({
-            type: 'tcl',
-            command: 'run_tests',
-            args: []
-        });
-        runTestsTask.name = 'Run TCL Tests';
-        runTestsTask.group = vscode.TaskGroup.Test;
-        tasks.push(runTestsTask);
-        
-        // Build package task
-        const buildPackageTask = this.createTask({
-            type: 'tcl',
-            command: 'build_package',
-            args: []
-        });
-        buildPackageTask.name = 'Build TCL Package';
-        buildPackageTask.group = vscode.TaskGroup.Build;
-        tasks.push(buildPackageTask);
-        
+        const run = this.createTask({ type: 'tcl', script: '${file}' });
+        run.name = 'Run Current TCL File';
+        tasks.push(run);
+        if (this.workspaceRoot && fs.existsSync(path.join(this.workspaceRoot, 'run_tests.tcl'))) {
+            const test = this.createTask({ type: 'tcl', command: 'run_tests' });
+            test.name = 'Run TCL Tests'; test.group = vscode.TaskGroup.Test; tasks.push(test);
+        }
+        if (this.workspaceRoot && ['pkgIndex.tcl', 'Package.tcl'].some(file => fs.existsSync(path.join(this.workspaceRoot!, file)))) {
+            const build = this.createTask({ type: 'tcl', command: 'build_package' });
+            build.name = 'Build TCL Package'; build.group = vscode.TaskGroup.Build; tasks.push(build);
+        }
         return tasks;
     }
 
@@ -131,10 +131,10 @@ export class TclTaskProvider implements vscode.TaskProvider {
                     const target = targetMatch[1];
                     const makeTask = new vscode.Task(
                         { type: 'shell' },
-                        vscode.TaskScope.Workspace,
+                        this.scope,
                         `make ${target}`,
                         'make',
-                        new vscode.ShellExecution('make', [target])
+                        new vscode.ProcessExecution('make', [target], { cwd: this.workspaceRoot })
                     );
                     makeTask.group = target === 'all' ? vscode.TaskGroup.Build : undefined;
                     tasks.push(makeTask);
@@ -171,10 +171,9 @@ export class TclTaskProvider implements vscode.TaskProvider {
     }
 
     private createTask(definition: TclTaskDefinition): vscode.Task {
-        const config = vscode.workspace.getConfiguration('tcl');
-        const interpreterPath = config.get<string>('interpreter.path', 'tclsh');
+        const interpreterPath = resolveTclInterpreter(this.resource, undefined, definition.interpreter);
         
-        let execution: vscode.ProcessExecution | vscode.ShellExecution;
+        let execution: vscode.ProcessExecution | vscode.ShellExecution | vscode.CustomExecution;
         
         if (definition.script) {
             // Run a TCL script
@@ -182,11 +181,22 @@ export class TclTaskProvider implements vscode.TaskProvider {
             execution = new vscode.ProcessExecution(
                 interpreterPath,
                 [definition.script, ...args],
-                { cwd: definition.cwd || this.workspaceRoot }
+                { cwd: resolveTclCwd(this.resource, definition.cwd ?? this.workspaceRoot), env: definition.env }
             );
+        } else if (definition.command === 'install_deps') {
+            execution = new vscode.CustomExecution(async () => {
+                const write = new vscode.EventEmitter<string>();
+                const close = new vscode.EventEmitter<number>();
+                let closed = false;
+                return { onDidWrite: write.event, onDidClose: close.event,
+                    open: () => { void this.installDependencies(this.resource).then(result => {
+                        if (!closed) { write.fire(result === false ? 'Dependency installation failed or cancelled.\r\n' : 'Dependency installation finished.\r\n'); close.fire(result === false ? 1 : 0); }
+                    }, error => { if (!closed) { write.fire(`${error}\r\n`); close.fire(1); } }); },
+                    close: () => { closed = true; write.dispose(); close.dispose(); } };
+            });
         } else if (definition.command) {
             // Run a command (could be a build command)
-            execution = this.createCommandExecution(definition.command, definition.args || [], definition.cwd);
+            execution = this.createCommandExecution(definition.command, definition.args || [], resolveTclCwd(this.resource, definition.cwd ?? this.workspaceRoot), definition.interpreter, definition.env);
         } else {
             // Default to shell execution
             execution = new vscode.ShellExecution('echo "No task defined"');
@@ -194,7 +204,7 @@ export class TclTaskProvider implements vscode.TaskProvider {
         
         const task = new vscode.Task(
             definition,
-            vscode.TaskScope.Workspace,
+            this.scope,
             definition.script || definition.command || 'TCL Task',
             'tcl',
             execution,
@@ -204,33 +214,29 @@ export class TclTaskProvider implements vscode.TaskProvider {
         return task;
     }
 
-    private createCommandExecution(command: string, args: string[], cwd = this.workspaceRoot): vscode.ProcessExecution | vscode.ShellExecution {
-        const config = vscode.workspace.getConfiguration('tcl');
-        const interpreterPath = config.get<string>('interpreter.path', 'tclsh');
+    private createCommandExecution(command: string, args: string[], cwd = this.workspaceRoot, override?: string, env?: Record<string, string>): vscode.ProcessExecution | vscode.ShellExecution {
+        const interpreterPath = resolveTclInterpreter(this.resource, undefined, override);
         
         switch (command) {
             case 'run_tests':
                 return new vscode.ProcessExecution(
                     interpreterPath,
-                    [path.join(this.workspaceRoot || '', 'run_tests.tcl')],
-                    { cwd }
+                    [path.join(cwd || '', 'run_tests.tcl'), ...args],
+                    { cwd, env }
                 );
                 
             case 'build_package':
-                return this.createBuildPackageExecution(cwd);
-                
-            case 'install_deps':
-                return this.createInstallDepsExecution(cwd);
+                return this.createBuildPackageExecution(cwd, override, env);
                 
             case 'package':
-                return this.createPackageExecution(cwd);
+                return this.createPackageExecution(cwd, override, env);
                 
             default:
-                return new vscode.ShellExecution(command, args, { cwd });
+                return new vscode.ProcessExecution(command, args, { cwd, env });
         }
     }
 
-    private createBuildPackageExecution(cwd = this.workspaceRoot): vscode.ProcessExecution {
+    private createBuildPackageExecution(cwd = this.workspaceRoot, override?: string, env?: Record<string, string>): vscode.ProcessExecution {
         const script = `#!/usr/bin/env tclsh
 # Build package script
 
@@ -261,47 +267,19 @@ if {![file exists build/pkgIndex.tcl]} {
 
 puts "Package built in ./build directory"
 `;
-        return this.createScriptExecution('task_build', script, cwd);
+        return this.createScriptExecution('task_build', script, cwd, override, env);
     }
 
-    /** Support the metadata commands written by the package wizard. */
-    private packageDefinitionScript(): string {
-        return `
-set ::taskDependencies {}
-proc name {value} { set ::name $value }
-proc version {value} { set ::version $value }
-proc description {args} {}
-proc require {pkg {ver ""}} {
-    lappend ::taskDependencies [list $pkg $ver]
-    set request [list package require $pkg]
-    if {$ver ne ""} { lappend request $ver }
-    uplevel #0 $request
-}
-proc test-require {pkg {ver ""}} { require $pkg $ver }
-source Package.tcl
-`;
+    /** Read metadata as data; archiving must not execute the package or its dependencies. */
+    private packageDefinitionScript(cwd = this.workspaceRoot): string {
+        try {
+            const metadata = parsePackageMetadata(fs.readFileSync(path.join(cwd ?? '', 'Package.tcl'), 'utf8'));
+            if (metadata.name && metadata.version) return `set name ${tclLiteral(metadata.name)}\nset version ${tclLiteral(metadata.version)}\n`;
+        } catch { /* The task reports missing or unsupported metadata when executed. */ }
+        return 'puts stderr "Package.tcl must declare static name and version metadata"\nexit 1\n';
     }
 
-    private createInstallDepsExecution(cwd = this.workspaceRoot): vscode.ProcessExecution {
-        const script = `${this.packageDefinitionScript()}
-set missing 0
-foreach dependency $::taskDependencies {
-    lassign $dependency pkg ver
-    set request [list package require $pkg]
-    if {$ver ne ""} { lappend request $ver }
-    if {[catch {uplevel #0 $request} error]} {
-        puts stderr "Could not load $pkg: $error"
-        set missing 1
-    } else {
-        puts "$pkg is available"
-    }
-}
-exit $missing
-`;
-        return this.createScriptExecution('task_deps', script, cwd);
-    }
-
-    private createPackageExecution(cwd = this.workspaceRoot): vscode.ProcessExecution {
+    private createPackageExecution(cwd = this.workspaceRoot, override?: string, env?: Record<string, string>): vscode.ProcessExecution {
         const script = `#!/usr/bin/env tclsh
 # Create package from Package.tcl
 
@@ -310,7 +288,7 @@ if {![file exists Package.tcl]} {
     exit 1
 }
 
-${this.packageDefinitionScript()}
+${this.packageDefinitionScript(cwd)}
 
 # Get package info from global variables
 if {![info exists name] || ![info exists version]} {
@@ -331,34 +309,48 @@ if {[file exists pkgIndex.tcl]} {
 lappend files {*}[glob -nocomplain *.tcl src/*.tcl lib/*.tcl]
 
 # Create tar archive (simplified - in real implementation use tar command)
-exec tar -cf $pkg_file {*}$files
+exec tar -cf $pkg_file {*}$files >@stdout 2>@stderr
 
 puts "Package created: $pkg_file"
 `;
-        return this.createScriptExecution('task_pkg', script, cwd);
+        return this.createScriptExecution('task_pkg', script, cwd, override, env);
     }
-    private createScriptExecution(label: string, script: string, cwd: string | undefined): vscode.ProcessExecution {
+    private createScriptExecution(label: string, script: string, cwd: string | undefined, override?: string, env?: Record<string, string>): vscode.ProcessExecution {
         const tmpFile = createTempTclPath(label);
         fs.writeFileSync(tmpFile, script, 'utf8');
-        const interpreterPath = vscode.workspace.getConfiguration('tcl').get<string>('interpreter.path', 'tclsh');
-        return new vscode.ProcessExecution(interpreterPath, [tmpFile], { cwd });
+        temporaryScripts.add(tmpFile);
+        const interpreterPath = resolveTclInterpreter(this.resource, undefined, override);
+        return new vscode.ProcessExecution(interpreterPath, [tmpFile], { cwd, env });
     }
 }
 
 export class TclTaskProviderManager {
     private taskProvider: vscode.Disposable | undefined;
+    constructor(private installDependencies?: (resource?: vscode.Uri) => Promise<boolean | void>) {}
 
     public register(context: vscode.ExtensionContext): void {
-        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        const provider = new TclTaskProvider(workspaceRoot);
-        
-        this.taskProvider = vscode.tasks.registerTaskProvider('tcl', provider);
-        context.subscriptions.push(this.taskProvider);
+        if (this.taskProvider) return;
+        this.taskProvider = vscode.tasks.registerTaskProvider('tcl', {
+            provideTasks: async () => {
+                const results = await Promise.all((vscode.workspace.workspaceFolders ?? []).map(folder =>
+                    new TclTaskProvider(folder.uri.fsPath, this.installDependencies).provideTasks() ?? []));
+                return results.flat();
+            },
+            resolveTask: task => {
+                const folder = typeof task.scope === 'object' ? task.scope : resolveTclFolder();
+                return new TclTaskProvider(folder?.uri.fsPath, this.installDependencies).resolveTask(task);
+            }
+        });
+        context.subscriptions.push(this.taskProvider, vscode.tasks.onDidEndTask(event => {
+            const execution = event.execution.task.execution;
+            if (execution instanceof vscode.ProcessExecution) {
+                for (const file of execution.args) if (temporaryScripts.delete(file)) void fs.promises.rm(file, { force: true }).catch(() => {});
+            }
+        }));
     }
-
     public dispose(): void {
-        if (this.taskProvider) {
-            this.taskProvider.dispose();
-        }
+        this.taskProvider?.dispose(); this.taskProvider = undefined;
+        for (const file of temporaryScripts) void fs.promises.rm(file, { force: true }).catch(() => {});
+        temporaryScripts.clear();
     }
 }

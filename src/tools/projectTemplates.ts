@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
+export interface ScaffoldParameters { name?: string; version?: string; namespace?: string; }
+
 export interface ProjectTemplate {
     name: string;
     description: string;
@@ -512,7 +514,7 @@ puts [mypackage::process "some data"]
 Run the test suite:
 
 \`\`\`bash
-tclsh tests/test_mypackage.tcl
+tclsh run_tests.tcl
 \`\`\`
 
 ## API Documentation
@@ -882,10 +884,41 @@ start_server $PORT
         return this.templates;
     }
 
-    public async createProject(templateId: string, projectPath: string): Promise<void> {
+    public async createProject(templateId: string, projectPath: string, parameters: ScaffoldParameters = {}): Promise<void> {
         const template = this.templates.find(t => t.id === templateId);
         if (!template) {
             throw new Error(`Template ${templateId} not found`);
+        }
+
+        if (parameters.name && !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(parameters.name)) throw new Error('Project name must be a Tcl-compatible identifier');
+        if (parameters.namespace && !/^[A-Za-z_][A-Za-z0-9_:]*$/.test(parameters.namespace)) throw new Error('Invalid Tcl namespace');
+        if (parameters.version && !/^\d+(?:\.\d+)*(?:[ab]\d+)?$/.test(parameters.version)) throw new Error('Invalid Tcl package version');
+        const packageName = parameters.name ?? 'mypackage';
+        const namespace = parameters.namespace ?? packageName.replace(/-/g, '_');
+        const render = (text: string) => {
+            if (parameters.name || parameters.namespace) {
+                text = text.replace(/::mypackage/g, `::${namespace}`).replace(/mypackage::/g, `${namespace}::`).replace(/mypackage/g, packageName);
+                text = text.replace(/MyTkApp|MyApp/g, parameters.name ?? packageName);
+            }
+            return parameters.version ? text.replace(/1\.0\.0/g, parameters.version) : text;
+        };
+        const files = template.files.map(file => ({ path: render(file.path), content: render(file.content) }));
+        if (templateId === 'package') {
+            const tests = files.find(file => file.path.startsWith('tests/'));
+            if (tests) {
+                tests.path = `tests/${packageName}.test`;
+                tests.content = tests.content.replace('    runAllTests', '    cleanupTests');
+            }
+            const runner = this.createTestSuiteTemplate().files.find(file => file.path === 'run_tests.tcl')!;
+            files.push({ ...runner });
+            files.push({ path: 'build.tcl', content: `set root [file dirname [file normalize [info script]]]
+set target [file join $root build]
+file mkdir $target
+foreach entry {src pkgIndex.tcl Package.tcl} {
+    file copy -force [file join $root $entry] $target
+}
+puts "Package built in $target"
+` });
         }
 
         // A project wizard must never replace an existing project's files.
@@ -903,7 +936,7 @@ start_server $PORT
         await fs.promises.mkdir(projectPath, { recursive: true });
 
         // Create all template files
-        for (const file of template.files) {
+        for (const file of files) {
             const filePath = path.join(projectPath, file.path);
             const dir = path.dirname(filePath);
             
@@ -947,7 +980,7 @@ start_server $PORT
                 if (!value || value.trim().length === 0) {
                     return 'Project name cannot be empty';
                 }
-                if (!/^[a-zA-Z0-9-_]+$/.test(value)) {
+                if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(value)) {
                     return 'Project name can only contain letters, numbers, hyphens and underscores';
                 }
                 return null;
@@ -960,7 +993,7 @@ start_server $PORT
         const projectPath = path.join(folderUri[0].fsPath, projectName);
         
         try {
-            await this.createProject(selectedTemplate.id, projectPath);
+            await this.createProject(selectedTemplate.id, projectPath, { name: projectName });
             
             // Open project in new window
             const openInNewWindow = await vscode.window.showInformationMessage(

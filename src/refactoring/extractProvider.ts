@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createVariableExtractionEdit, createVariableInlineEdit } from './variableEdits';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
 import { escapeTclString } from '../utils/tclUtils';
 import { DocumentSymbolTable } from '../analysis/symbolTable';
@@ -163,19 +164,8 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
         }
 
         try {
-            // Create workspace edit
-            const edit = new vscode.WorkspaceEdit();
-            
-            // Find the best position to insert the variable assignment
-            const insertPosition = this.findVariableInsertPosition(document, range);
-            
-            // Create variable assignment
-            const variableAssignment = `set ${variableName} ${selectedText}\n`;
-            edit.insert(uri, insertPosition, variableAssignment);
-            
-            // Replace selected expression with variable reference
-            edit.replace(uri, range, `$${variableName}`);
-            
+            const edit = this.createVariableExtractionEdit(document, range, variableName);
+
             // Apply the edit
             await vscode.workspace.applyEdit(edit);
             
@@ -186,70 +176,13 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
         }
     }
 
+    public createVariableExtractionEdit = createVariableExtractionEdit;
+    public createVariableInlineEdit = createVariableInlineEdit;
+
     public async inlineVariable(uri: vscode.Uri, position: vscode.Position): Promise<void> {
-        const document = await vscode.workspace.openTextDocument(uri);
-        const wordRange = document.getWordRangeAtPosition(position);
-        
-        if (!wordRange) {
-            vscode.window.showErrorMessage('No variable selected');
-            return;
-        }
-
-        const variableName = document.getText(wordRange);
-        
-        // Check if this is a variable reference or assignment
-        const line = document.lineAt(position.line);
-        const charBefore = position.character > 0 ? line.text[wordRange.start.character - 1] : '';
-        
-        // If user selected $varname, remove the $
-        if (charBefore === '$') {
-            // User is on a variable reference, that's fine
-        } else {
-            // Check if this could be a variable assignment (set varname ...)
-            const lineText = line.text;
-            const setPattern = new RegExp(`\\bset\\s+${variableName}\\b`);
-            if (!setPattern.test(lineText)) {
-                vscode.window.showErrorMessage('Please select a variable name (in a set command or with $)');
-                return;
-            }
-        }
-
         try {
-            // Find the variable assignment
-            const assignment = this.findVariableAssignment(document, variableName);
-            
-            if (!assignment) {
-                vscode.window.showErrorMessage(`Cannot find assignment for variable '${variableName}'`);
-                return;
-            }
-
-            // Create workspace edit
-            const edit = new vscode.WorkspaceEdit();
-            
-            // Replace all references with the assigned value
-            const references = this.findVariableReferences(document, variableName);
-            
-            for (const ref of references) {
-                // Replace $variableName with the assigned value
-                const refRange = new vscode.Range(
-                    ref.line, ref.start - 1, // Include the $
-                    ref.line, ref.end
-                );
-                edit.replace(uri, refRange, assignment.value);
-            }
-            
-            // Remove the variable assignment
-            const assignmentRange = new vscode.Range(
-                assignment.line, 0,
-                assignment.line + 1, 0 // Include the newline
-            );
-            edit.delete(uri, assignmentRange);
-            
-            // Apply the edit
-            await vscode.workspace.applyEdit(edit);
-            
-            vscode.window.showInformationMessage(`Variable '${variableName}' inlined successfully`);
-            
+            const document = await vscode.workspace.openTextDocument(uri);
+            await vscode.workspace.applyEdit(this.createVariableInlineEdit(document, position));
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to inline variable: ${error}`);
         }
@@ -358,60 +291,6 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
         
         // If no procedure found, insert at the beginning of the file
         return new vscode.Position(0, 0);
-    }
-
-    private findVariableInsertPosition(document: vscode.TextDocument, range: vscode.Selection): vscode.Position {
-        // Insert at the beginning of the line containing the selection
-        return new vscode.Position(range.start.line, 0);
-    }
-
-    private findVariableAssignment(document: vscode.TextDocument, variableName: string): { 
-        line: number; 
-        value: string; 
-    } | null {
-        const text = document.getText();
-        const lines = text.split('\n');
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const setPattern = new RegExp(`\\bset\\s+${variableName}\\s+(.+)$`);
-            const match = setPattern.exec(line);
-            
-            if (match) {
-                return {
-                    line: i,
-                    value: match[1].trim()
-                };
-            }
-        }
-        
-        return null;
-    }
-
-    private findVariableReferences(document: vscode.TextDocument, variableName: string): {
-        line: number;
-        start: number;
-        end: number;
-    }[] {
-        const references: { line: number; start: number; end: number; }[] = [];
-        const text = document.getText();
-        const lines = text.split('\n');
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const varPattern = new RegExp(`\\$${variableName}\\b`, 'g');
-            let match;
-            
-            while ((match = varPattern.exec(line)) !== null) {
-                references.push({
-                    line: i,
-                    start: match.index + 1, // Skip the $
-                    end: match.index + match[0].length
-                });
-            }
-        }
-        
-        return references;
     }
 
     public registerCommands(context: vscode.ExtensionContext): void {

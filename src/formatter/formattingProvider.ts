@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { TclFormatter, TclFormattingOptions } from './tclFormatter';
 
 export class TclFormattingProvider implements vscode.DocumentFormattingEditProvider, vscode.DocumentRangeFormattingEditProvider {
-    private createFormatter(options: vscode.FormattingOptions): TclFormatter {
-        const config = vscode.workspace.getConfiguration('tcl');
+    private createFormatter(options: vscode.FormattingOptions, resource: vscode.Uri): TclFormatter {
+        const config = vscode.workspace.getConfiguration('tcl', resource);
 
         const formatterOptions: TclFormattingOptions = {
             indentSize: options.tabSize,
@@ -23,7 +23,7 @@ export class TclFormattingProvider implements vscode.DocumentFormattingEditProvi
         _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
         try {
-            const formatter = this.createFormatter(options);
+            const formatter = this.createFormatter(options, document.uri);
             const firstLine = document.lineAt(0);
             const lastLine = document.lineAt(document.lineCount - 1);
             const fullRange = new vscode.Range(firstLine.range.start, lastLine.range.end);
@@ -43,10 +43,9 @@ export class TclFormattingProvider implements vscode.DocumentFormattingEditProvi
         _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.TextEdit[]> {
         try {
-            const formatter = this.createFormatter(options);
-            const formatted = formatter.format(document.getText(range));
-
-            return [vscode.TextEdit.replace(range, formatted)];
+            const formatter = this.createFormatter(options, document.uri);
+            const edit = formatter.formatRange(document.getText(), document.offsetAt(range.start), document.offsetAt(range.end));
+            return edit ? [vscode.TextEdit.replace(new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)), edit.text)] : [];
         } catch (error) {
             console.error('TCL range formatting failed:', error);
             return [];

@@ -1,209 +1,43 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
-import { findMatchingBrace } from '../utils/tclUtils';
 import { SymbolTableCache } from '../analysis/symbolTableCache';
+import { WorkspaceIndex } from '../analysis/workspaceIndex';
+import { analyzeDocument } from '../analysis/documentAnalysis';
+import { featureSymbolAt } from './languageFeatures';
 
 export class TclHoverProvider implements vscode.HoverProvider {
-
-    constructor(private symbolTableCache?: SymbolTableCache) {}
-
-    provideHover(
-        document: vscode.TextDocument,
-        position: vscode.Position,
-        _token: vscode.CancellationToken
-    ): vscode.ProviderResult<vscode.Hover> {
-        const wordRange = document.getWordRangeAtPosition(position);
-        if (!wordRange) {
-            return null;
+    constructor(_symbolTableCache?: SymbolTableCache) {}
+    async provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): Promise<vscode.Hover | null> {
+        const index = WorkspaceIndex.getInstance();
+        await index.ready(token);
+        if (token.isCancellationRequested) return null;
+        const symbol = featureSymbolAt(document, position, index);
+        const markdown = new vscode.MarkdownString();
+        if (symbol?.binding || symbol?.variableName) {
+            markdown.appendCodeblock(`$${symbol.variableName ?? symbol.binding!.name}`, 'tcl');
+            markdown.appendText(`${symbol.binding?.scope ?? 'namespace'} variable`);
+            if (symbol.binding?.aliasOf) markdown.appendText(`; alias of ${symbol.binding.aliasOf}`);
+            return new vscode.Hover(markdown, symbol.range);
         }
-
-        const word = document.getText(wordRange);
-        const line = document.lineAt(position.line).text;
-
-        // Check for built-in commands
-        const builtinCommand = TCL_BUILTIN_COMMANDS.find(cmd => cmd.name === word);
-        if (builtinCommand) {
-            const markdown = new vscode.MarkdownString();
-            markdown.appendCodeblock(`${builtinCommand.signature}`, 'tcl');
-            markdown.appendText(builtinCommand.description);
-            markdown.appendText(`\n\n**Category:** ${builtinCommand.category}`);
-            
-            return new vscode.Hover(markdown, wordRange);
+        if (symbol?.declarations.length) {
+            for (const { declaration, analysis } of symbol.declarations) {
+                markdown.appendCodeblock(`${declaration.kind} ${declaration.qualifiedName}${declaration.params ? ` {${declaration.params.value}}` : ''}`, 'tcl');
+                if (declaration.documentation) markdown.appendText(declaration.documentation + '\n\n');
+                markdown.appendText(`Defined in ${vscode.workspace.asRelativePath(analysis.document.uri)}\n\n`);
+            }
+            return new vscode.Hover(markdown, symbol.range);
         }
-
-        // Check for user-defined procedures
-        const procInfo = this.findProcedureInfo(document, word);
-        if (procInfo) {
-            const markdown = new vscode.MarkdownString();
-            markdown.appendCodeblock(`proc ${procInfo.name} {${procInfo.args}}`, 'tcl');
-            markdown.appendText('User-defined procedure');
-            
-            if (procInfo.comment) {
-                markdown.appendText(`\n\n${procInfo.comment}`);
-            }
-            
-            return new vscode.Hover(markdown, wordRange);
-        }
-
-        // Check for variables — prefer scope-aware symbol table info
-        if (this.symbolTableCache) {
-            const symbolEntry = this.symbolTableCache.getOrCreate(document).getSymbolAt(position);
-            if (symbolEntry && (symbolEntry.kind === 'variable' || symbolEntry.kind === 'parameter')) {
-                const markdown = new vscode.MarkdownString();
-                markdown.appendCodeblock(`$${word}`, 'tcl');
-
-                const scopeLabels: Record<string, string> = {
-                    'local': 'local variable',
-                    'global': 'global variable',
-                    'namespace': 'namespace variable',
-                    'parameter': 'procedure parameter',
-                    'upvar': symbolEntry.aliasOf
-                        ? `upvar alias of \`${symbolEntry.aliasOf}\``
-                        : 'upvar alias'
-                };
-                const label = scopeLabels[symbolEntry.scope] || symbolEntry.scope;
-                markdown.appendText(`**Scope:** ${label}`);
-
-                return new vscode.Hover(markdown, wordRange);
-            }
-        }
-
-        // Fallback: basic variable info from backward search
-        const varInfo = this.getVariableInfo(document, position, word);
-        if (varInfo) {
-            const markdown = new vscode.MarkdownString();
-            markdown.appendCodeblock(`$${word}`, 'tcl');
-            markdown.appendText(`Variable: ${varInfo.type}`);
-            
-            if (varInfo.value) {
-                markdown.appendText(`\n\n**Value:** ${varInfo.value}`);
-            }
-            
-            return new vscode.Hover(markdown, wordRange);
-        }
-
-        // Check for namespace references
-        if (word.includes('::') || line.includes(`::${word}`)) {
-            const markdown = new vscode.MarkdownString();
-            markdown.appendCodeblock(word, 'tcl');
-            markdown.appendText('Namespace reference');
-            
-            return new vscode.Hover(markdown, wordRange);
-        }
-
-        return null;
-    }
-
-    private findProcedureInfo(document: vscode.TextDocument, procName: string): {
-        name: string;
-        args: string;
-        comment?: string;
-    } | null {
-        const text = document.getText();
-        const lines = text.split('\n');
-
-        let lineOffset = 0;
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const procMatch = line.match(new RegExp(`\\bproc\\s+(${procName})\\s*\\{`));
-
-            if (procMatch) {
-                const name = procMatch[1];
-
-                // Find the matching closing brace for arguments
-                const startIdx = lineOffset + line.indexOf('{');
-                const endIdx = findMatchingBrace(text, startIdx);
-
-                let args = '';
-                if (endIdx !== -1) {
-                    args = text.substring(startIdx + 1, endIdx).trim();
-                }
-
-                // Look for comment above the procedure
-                let comment = '';
-                for (let j = i - 1; j >= 0; j--) {
-                    const prevLine = lines[j].trim();
-                    if (prevLine.startsWith('#')) {
-                        comment = prevLine.substring(1).trim() + '\n' + comment;
-                    } else if (prevLine === '') {
-                        continue;
-                    } else {
-                        break;
-                    }
-                }
-
-                return {
-                    name,
-                    args,
-                    comment: comment.trim() || undefined
-                };
-            }
-
-            lineOffset += line.length + 1; // +1 for the newline character
-        }
-
-        return null;
-    }
-
-    private getVariableInfo(document: vscode.TextDocument, position: vscode.Position, varName: string): {
-        type: string;
-        value?: string;
-    } | null {
-        const text = document.getText();
-        const lines = text.split('\n');
-        
-        // Look for variable declarations before the current position
-        for (let i = position.line; i >= 0; i--) {
-            const line = lines[i];
-            
-            // Check for set command
-            const setMatch = line.match(new RegExp(`\\bset\\s+(${varName})\\s+(.+)`));
-            if (setMatch) {
-                const value = setMatch[2].trim();
-                return {
-                    type: 'local variable',
-                    value: value.length > 50 ? value.substring(0, 50) + '...' : value
-                };
-            }
-            
-            // Check for global command
-            const globalMatch = line.match(new RegExp(`\\bglobal\\s+.*\\b${varName}\\b`));
-            if (globalMatch) {
-                return {
-                    type: 'global variable'
-                };
-            }
-            
-            // Check for variable command
-            const variableMatch = line.match(new RegExp(`\\bvariable\\s+(${varName})(?:\\s+(.+))?`));
-            if (variableMatch) {
-                const value = variableMatch[2]?.trim();
-                return {
-                    type: 'namespace variable',
-                    value: value && value.length > 50 ? value.substring(0, 50) + '...' : value
-                };
-            }
-            
-            // Check for proc arguments
-            const procMatch = line.match(/\bproc\s+\w+\s*\{/);
-            if (procMatch) {
-                // Find the argument list in braces
-                const argsStart = line.indexOf('{', line.indexOf('proc'));
-                if (argsStart !== -1) {
-                    const argsEnd = line.indexOf('}', argsStart);
-                    if (argsEnd !== -1) {
-                        const argsText = line.substring(argsStart + 1, argsEnd);
-                        const args = argsText.trim().split(/\s+/);
-                        if (args.includes(varName)) {
-                            return {
-                                type: 'procedure argument'
-                            };
-                        }
-                    }
-                }
-            }
-        }
-        
-        return null;
+        const analysis = analyzeDocument(document);
+        const offset = document.offsetAt(position);
+        const context = analysis.contextAt(offset);
+        if (!context) return null;
+        const words = context.command.words;
+        const builtin = TCL_BUILTIN_COMMANDS.filter(command => command.name === words[0]?.value || command.name === `${words[0]?.value} ${words[1]?.value}`).sort((a, b) => b.name.length - a.name.length)[0];
+        if (!builtin) return null;
+        const last = words[builtin.name.split(/\s+/).length - 1];
+        if (offset < words[0].contentStart || offset > last.contentEnd) return null;
+        markdown.appendCodeblock(builtin.signature, 'tcl');
+        markdown.appendText(builtin.description);
+        return new vscode.Hover(markdown, analysis.range(words[0].contentStart, last.contentEnd));
     }
 }

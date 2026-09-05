@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
+import { createNamespaceRenameEdit } from './namespaceEdits';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
 import { SymbolTableCache } from '../analysis/symbolTableCache';
 import { DocumentSymbolTable } from '../analysis/symbolTable';
 import { commandContexts, procedureDeclarations, resolveProcedureName } from '../analysis/procedures';
 import { isStaticWord } from '../utils/tclParser';
+import { WorkspaceIndex } from '../analysis/workspaceIndex';
+import { featureSymbolAt } from '../providers/languageFeatures';
 
 export class TclRenameProvider implements vscode.RenameProvider {
     
@@ -16,6 +19,11 @@ export class TclRenameProvider implements vscode.RenameProvider {
         _token: vscode.CancellationToken
     ): Promise<vscode.WorkspaceEdit | null> {
         
+        const namespaceEdit = await createNamespaceRenameEdit(document, position, newName);
+        if (namespaceEdit) return namespaceEdit;
+        const objectEdit = await this.renameObjectSymbol(document, position, newName, _token);
+        if (objectEdit) return objectEdit;
+
         let wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {
             return null;
@@ -72,6 +80,8 @@ export class TclRenameProvider implements vscode.RenameProvider {
         _token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Range | { range: vscode.Range; placeholder: string }> {
         
+        const objectSymbol = featureSymbolAt(document, position);
+        if (objectSymbol?.declarations.some(item => item.declaration.kind === 'method' || item.declaration.kind === 'class')) return { range: objectSymbol.range, placeholder: document.getText(objectSymbol.range) };
         let wordRange = document.getWordRangeAtPosition(position);
         if (!wordRange) {
             throw new Error('Nothing to rename here');
@@ -102,6 +112,35 @@ export class TclRenameProvider implements vscode.RenameProvider {
     private isValidTclIdentifier(name: string): boolean {
         // TCL identifiers can contain letters, digits, underscores, and colons (for namespaces)
         return /^[\p{L}\p{M}_:][\p{L}\p{M}\p{N}_:]*$/u.test(name);
+    }
+
+    private async renameObjectSymbol(document: vscode.TextDocument, position: vscode.Position, newName: string, token: vscode.CancellationToken): Promise<vscode.WorkspaceEdit | undefined> {
+        const index = WorkspaceIndex.getInstance();
+        await index.ready(token);
+        if (token.isCancellationRequested) return undefined;
+        const selected = featureSymbolAt(document, position, index);
+        const candidates = selected?.declarations.filter(item => item.declaration.kind === 'method' || item.declaration.kind === 'class') ?? [];
+        if (!candidates.length) return undefined;
+        if (candidates.length !== 1) throw new Error('The object-oriented declaration is ambiguous');
+        if (!/^[\p{L}\p{M}_][\p{L}\p{M}\p{N}_]*$/u.test(newName)) throw new Error('Rename within the current class or namespace using a single identifier');
+        const declaration = candidates[0].declaration;
+        if (declaration.kind === 'method' && ['constructor', 'destructor'].includes(declaration.name)) throw new Error('Constructors and destructors have fixed names');
+        if (declaration.kind === 'class' && declaration.command.words[0].value.replace(/^::/, '') !== 'oo::class') throw new Error('Only statically declared classes can be renamed');
+        const prefix = declaration.kind === 'method' ? declaration.qualifiedName.slice(0, declaration.qualifiedName.lastIndexOf('#') + 1) : declaration.qualifiedName.slice(0, declaration.qualifiedName.lastIndexOf('::') + 2);
+        const target = prefix + newName;
+        if (target !== declaration.qualifiedName && index.getDeclarations(document).some(item => item.declaration.qualifiedName === target)) throw new Error('The target name already exists');
+        const edit = new vscode.WorkspaceEdit();
+        const seen = new Set<string>();
+        for (const occurrence of index.getCallOccurrences(declaration.qualifiedName, document, true)) {
+            const doc = index.getAnalyses(document).find(analysis => analysis.document.uri.toString() === occurrence.uri.toString())!.document;
+            const original = doc.getText(occurrence.range);
+            const qualification = declaration.kind === 'class' && original.includes('::') ? original.slice(0, original.lastIndexOf('::') + 2) : '';
+            const key = `${occurrence.uri}:${occurrence.range.start.line}:${occurrence.range.start.character}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            edit.replace(occurrence.uri, occurrence.range, qualification + newName);
+        }
+        return edit;
     }
 
     private escapeRegex(lit: string): string {
@@ -319,52 +358,11 @@ export class TclRenameProvider implements vscode.RenameProvider {
     }
 
     private async renameNamespace(
-        document: vscode.TextDocument,
-        oldName: string,
-        newName: string,
-        edit: vscode.WorkspaceEdit
+        _document: vscode.TextDocument,
+        _oldName: string,
+        _newName: string,
+        _edit: vscode.WorkspaceEdit
     ): Promise<void> {
-        
-        // Find all references across the workspace for namespaces
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}');
-        const escaped = this.escapeRegex(oldName);
-        
-        for (const file of files) {
-            const doc = await vscode.workspace.openTextDocument(file);
-            const text = doc.getText();
-            const lines = text.split('\n');
-            
-            for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-                const line = lines[lineNum];
-                
-                // Find namespace definitions
-                const nsDefPattern = new RegExp(`\\bnamespace\\s+(create|eval)\\s+${escaped}\\b`, 'g');
-                let match;
-                while ((match = nsDefPattern.exec(line)) !== null) {
-                    const startPos = new vscode.Position(lineNum, match.index + match[0].indexOf(oldName));
-                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
-                }
-
-                // Find qualified names using the namespace
-                const qualifiedPattern = new RegExp(`\\b${escaped}::[a-zA-Z_][a-zA-Z0-9_]*`, 'g');
-                while ((match = qualifiedPattern.exec(line)) !== null) {
-                    const startPos = new vscode.Position(lineNum, match.index);
-                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                    edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
-                }
-
-                // Find namespace current/which commands
-                const nsCmdPattern = new RegExp(`\\bnamespace\\s+(current|which).*${escaped}`, 'g');
-                while ((match = nsCmdPattern.exec(line)) !== null) {
-                    const nameMatch = line.substring(match.index).match(new RegExp(`\\b${escaped}\\b`));
-                    if (nameMatch) {
-                        const startPos = new vscode.Position(lineNum, match.index + nameMatch.index!);
-                        const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                        edit.replace(doc.uri, new vscode.Range(startPos, endPos), newName);
-                    }
-                }
-            }
-        }
+        throw new Error('Select the namespace name in its namespace eval declaration to rename it');
     }
 }

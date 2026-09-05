@@ -1,446 +1,102 @@
-# Contributing to TCL Language Support
+# Contributing to TCL Syntax
 
-Thank you for your interest in contributing to the TCL Language Support extension! This guide will help you get started.
+This guide describes development and releases for the 0.8.0 codebase. See [README.md](README.md) for features, [ARCHITECTURE_GUIDE.md](ARCHITECTURE_GUIDE.md) for design, and [ROADMAP.md](ROADMAP.md) for remaining candidates.
 
-## Table of Contents
-1. [Code of Conduct](#code-of-conduct)
-2. [Getting Started](#getting-started)
-3. [Development Setup](#development-setup)
-4. [Project Structure](#project-structure)
-5. [Making Contributions](#making-contributions)
-6. [Coding Guidelines](#coding-guidelines)
-7. [Testing](#testing)
-8. [Submitting Pull Requests](#submitting-pull-requests)
-9. [Release Process](#release-process)
+## Development setup
 
-## Code of Conduct
+Use Node.js 22.12 or newer, npm, Git, VS Code 1.136.0 or newer, and a Tcl interpreter on `PATH`. CI uses Node 26. TclOO runtime tests need Tcl 8.6+ (or another interpreter providing `oo::class`); worker-debugging tests also need the Thread package. The TypeScript 7 compiler targets ES2020/CommonJS with strict checking. Oxlint is configured in `.oxlintrc.json`.
 
-We are committed to providing a welcoming and inclusive environment. Please:
-- Be respectful and constructive in discussions
-- Welcome newcomers and help them get started
-- Focus on what is best for the community
-- Show empathy towards other community members
-
-## Getting Started
-
-### Prerequisites
-- Node.js (v22.12.0 or higher)
-- npm (v9 or higher)
-- VS Code 1.136.0 or newer
-- Git
-- TCL interpreter (for testing)
-
-### First-Time Contributors
-1. Fork the repository
-2. Clone your fork
-3. Create a feature branch
-4. Make your changes
-5. Submit a pull request
-
-Look for issues labeled `good first issue` or `help wanted`.
-
-## Development Setup
-
-### 1. Clone the Repository
-```bash
+```sh
 git clone https://github.com/AmosAnderson/tcl_vscode.git
-cd tcl-vscode
-```
-
-### 2. Install Dependencies
-```bash
-npm install
-```
-
-### 3. Build the Extension
-```bash
+cd tcl_vscode
+npm ci
 npm run compile
 ```
 
-### 4. Watch for Changes
-```bash
-npm run watch
-```
+Open the project in VS Code and launch **Run Extension** with F5. The Extension Development Host loads the extension from this checkout. `npm run watch` watches TypeScript only; run `npm run compile` again after changing Tcl debug scripts so they are copied into `out/debug/scripts/`.
 
-### 5. Launch Development Instance
-1. Open project in VS Code
-2. Press `F5` to launch Extension Development Host
-3. Open a `.tcl` file in the new window to test
+## Source layout and conventions
 
-## Project Structure
+| Location | Responsibility |
+| --- | --- |
+| `src/extension.ts` | Activation, provider registration, commands, and shared service lifetimes |
+| `src/analysis/`, `src/utils/tclParser.ts` | Parsed declarations, bindings, references, document caches, and workspace index |
+| `src/providers/` | Completion, navigation, signatures, CodeLens, diagnostics, lint, and code actions |
+| `src/formatter/` | VS Code formatting integration and pure formatting logic |
+| `src/refactoring/` | Syntax/binding-based edits with conservative safety checks |
+| `src/debug/` | Debug adapter, Tcl trace server, attach/Thread support, and REPL |
+| `src/testing/` | Test discovery, selected execution, cancellation, output, and coverage |
+| `src/tools/` | Interpreter/cwd resolution, tasks, packages, dependencies, scaffolds, and run commands |
+| `src/test/` | Mocha TDD suites and standalone/VS Code launchers |
+| `.github/` | CI, tag release workflow, and release validation scripts/tests |
+| `package.json` | Extension contribution manifest, scripts, and dependencies |
 
-```
-tcl-vscode/
-├── src/                    # Source code
-│   ├── extension.ts        # Extension entry point
-│   ├── analysis/           # Semantic analysis
-│   │   ├── symbolTable.ts
-│   │   ├── symbolTableCache.ts
-│   │   └── workspaceIndex.ts
-│   ├── data/              # TCL command definitions
-│   │   └── tclCommands.ts
-│   ├── debug/             # Debugging support
-│   │   ├── debugAdapterFactory.ts
-│   │   ├── tclDebugAdapter.ts
-│   │   ├── tclREPL.ts
-│   │   └── scripts/
-│   │       └── debugServer.tcl  # TCL-side debug server
-│   ├── formatter/         # Code formatting
-│   │   ├── formattingProvider.ts
-│   │   └── tclFormatter.ts
-│   ├── providers/         # Language features
-│   │   ├── codeActionProvider.ts
-│   │   ├── completionProvider.ts
-│   │   ├── definitionProvider.ts
-│   │   ├── diagnosticProvider.ts
-│   │   ├── hoverProvider.ts
-│   │   ├── lintProvider.ts
-│   │   └── symbolProvider.ts
-│   ├── refactoring/       # Refactoring features
-│   │   ├── extractProvider.ts
-│   │   ├── namespaceProvider.ts
-│   │   └── renameProvider.ts
-│   ├── testing/           # Test support
-│   │   ├── coverageProvider.ts
-│   │   └── testProvider.ts
-│   ├── tools/             # External tools
-│   │   ├── dependencyManager.ts
-│   │   ├── interpreterManager.ts
-│   │   ├── packageManager.ts
-│   │   ├── projectTemplates.ts
-│   │   ├── runCommands.ts
-│   │   └── taskProvider.ts
-│   └── utils/             # Shared utilities
-│       └── tclUtils.ts
-├── snippets/              # VS Code snippet definitions
-│   └── tcl.json
-├── syntaxes/              # Syntax definitions
-│   └── tcl.tmLanguage.json
-├── docs/                  # Documentation
-├── package.json           # Extension manifest
-└── tsconfig.json          # TypeScript config
-```
+Use four-space indentation in TypeScript and retain the existing newline convention. Keep provider registration in `extension.ts`, share command metadata from `src/data/tclCommands.ts`, and regenerate `out/` instead of editing it. The lightweight native task provider registers during activation; expensive interpreter/package/dependency/template/run services remain behind the shared `ensurePhase6Initialized()` promise.
 
-## Making Contributions
+Resource-dependent operations should use the document/workspace-folder context. Dispose listeners, timers, processes, terminals, and handles according to ownership. Diagnostics must never source or evaluate the user's document. Static analysis and refactoring should return a clear limitation when dynamic Tcl prevents a safe result.
 
-### Types of Contributions
+## Validation
 
-#### 1. Bug Fixes
-- Fix reported issues
-- Improve error handling
-- Fix edge cases
-
-#### 2. New Features
-- Add new language features
-- Enhance existing functionality
-- Improve performance
-
-#### 3. Documentation
-- Improve user guides
-- Add code examples
-- Fix typos and clarity
-
-#### 4. Tests
-- Add test coverage
-- Fix failing tests
-- Improve test quality
-
-### Development Workflow
-
-1. **Create an Issue** (if one doesn't exist)
-   - Describe the problem or feature
-   - Discuss approach with maintainers
-
-2. **Create a Branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   # or
-   git checkout -b fix/issue-description
-   ```
-
-3. **Make Changes**
-   - Write clean, readable code
-   - Add tests for new functionality
-   - Update documentation
-
-4. **Test Your Changes**
-   ```bash
-   npm run compile
-   npm run lint
-   npm test
-   ```
-
-5. **Commit Your Changes**
-   ```bash
-   git add .
-   git commit -m "feat: add new TCL command completion"
-   ```
-
-   Follow conventional commits:
-   - `feat:` New feature
-   - `fix:` Bug fix
-   - `docs:` Documentation
-   - `style:` Code style changes
-   - `refactor:` Code refactoring
-   - `test:` Test changes
-   - `chore:` Build/tooling changes
-
-## Coding Guidelines
-
-### TypeScript Style
-
-1. **Use TypeScript Strict Mode**
-   ```typescript
-   // Good
-   const getName = (user: User): string => {
-       return user.name;
-   };
-   ```
-
-2. **Prefer Const and Let**
-   ```typescript
-   // Good
-   const MAX_ITEMS = 100;
-   let count = 0;
-   
-   // Avoid
-   var items = [];
-   ```
-
-3. **Use Async/Await**
-   ```typescript
-   // Good
-   async function loadFile(path: string): Promise<string> {
-       try {
-           const content = await fs.readFile(path, 'utf8');
-           return content;
-       } catch (error) {
-           throw new Error(`Failed to load file: ${error}`);
-       }
-   }
-   ```
-
-4. **Type Everything**
-   ```typescript
-   // Good
-   interface TclSymbol {
-       name: string;
-       kind: vscode.SymbolKind;
-       range: vscode.Range;
-   }
-   
-   // Avoid
-   const symbol: any = { name: 'test' };
-   ```
-
-### VS Code Extension Guidelines
-
-1. **Dispose Resources**
-   ```typescript
-   class MyProvider implements vscode.Disposable {
-       private disposables: vscode.Disposable[] = [];
-       
-       constructor() {
-           this.disposables.push(
-               vscode.workspace.onDidChangeTextDocument(this.onDocumentChange)
-           );
-       }
-       
-       dispose() {
-           this.disposables.forEach(d => d.dispose());
-       }
-   }
-   ```
-
-2. **Handle Errors Gracefully**
-   ```typescript
-   try {
-       const result = await riskyOperation();
-       return result;
-   } catch (error) {
-       console.error('Operation failed:', error);
-       vscode.window.showErrorMessage('Operation failed. See output for details.');
-       return undefined;
-   }
-   ```
-
-3. **Use Configuration Properly**
-   ```typescript
-   const config = vscode.workspace.getConfiguration('tcl');
-   const enabled = config.get<boolean>('feature.enable', true); // with default
-   ```
-
-### TCL-Specific Guidelines
-
-1. **Command Definitions**
-   ```typescript
-   // In tclCommands.ts
-   {
-       name: 'newcommand',
-       signature: 'newcommand ?options? arg ?arg ...?',
-       description: 'Clear description of what command does',
-       category: 'category'
-   }
-   ```
-
-2. **Syntax Patterns**
-   ```json
-   // In tcl.tmLanguage.json
-   {
-       "name": "keyword.control.tcl",
-       "match": "\\b(if|else|elseif|then)\\b"
-   }
-   ```
-
-## Testing
-
-### Running Tests
-
-```bash
-# Run all tests
+```sh
+npm run lint
+npm run test:unit
 npm test
+node --test .github/scripts/prepare-release.test.mjs
 ```
 
-### Writing Tests
+`npm run test:unit` compiles and runs suites that do not need the VS Code API, including real Tcl debugger fixtures. `npm test` also compiles, then runs all extension suites in an isolated two-folder VS Code workspace. The standalone suites are included in the full host run. Tests use Mocha's TDD `suite`/`test` interface. Runtime tests need `tclsh`; capability-specific TclOO and Thread cases skip when unavailable.
 
-1. **Unit Tests** (in `src/test/`)
-   ```typescript
-   import * as assert from 'assert';
-   import { TclFormatter } from '../formatter/tclFormatter';
-   
-   suite('TCL Formatter Tests', () => {
-       test('should format braces correctly', () => {
-           const formatter = new TclFormatter();
-           const input = 'if {$x>0}{puts "yes"}';
-           const expected = 'if {$x > 0} {\n    puts "yes"\n}';
-           assert.strictEqual(formatter.format(input), expected);
-       });
-   });
-   ```
+The integration launcher defaults to VS Code 1.136.1. Override it with `VSCODE_TEST_VERSION` or `VSCODE_EXECUTABLE_PATH`. To focus either Mocha runner in a POSIX shell:
 
-2. **Integration Tests**
-   ```typescript
-   test('completion should work in namespace context', async () => {
-       const doc = await vscode.workspace.openTextDocument({
-           content: 'namespace eval test { }',
-           language: 'tcl'
-       });
-       
-       const position = new vscode.Position(0, 21);
-       const completions = await vscode.commands.executeCommand<vscode.CompletionList>(
-           'vscode.executeCompletionItemProvider',
-           doc.uri,
-           position
-       );
-       
-       assert.ok(completions.items.length > 0);
-   });
-   ```
-
-### Test Guidelines
-- Test edge cases
-- Test error conditions
-- Use meaningful test names
-- Keep tests focused and small
-- Mock external dependencies
-
-## Submitting Pull Requests
-
-### Before Submitting
-
-1. **Update from main**
-   ```bash
-   git fetch upstream
-   git rebase upstream/main
-   ```
-
-2. **Run all checks**
-   ```bash
-   npm run compile
-   npm run lint
-   npm test
-   ```
-
-3. **Update documentation**
-   - Add/update relevant docs
-   - Update CHANGELOG.md
-   - Update README if needed
-
-### PR Description Template
-
-```markdown
-## Description
-Brief description of changes
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
-
-## Testing
-- [ ] Unit tests pass
-- [ ] Manual testing completed
-- [ ] Added new tests
-
-## Checklist
-- [ ] Code follows style guidelines
-- [ ] Self-review completed
-- [ ] Documentation updated
-- [ ] No new warnings
-
-## Related Issues
-Fixes #123
+```sh
+TCL_TEST_GREP='Contextual formatting' npm test
 ```
 
-### Review Process
+On Linux, use `xvfb-run -a npm test` when no display is available. `.github/workflows/ci.yml` installs Tcl and runs lint, release validation tests, standalone tests, and VS Code integration on Linux, macOS, and Windows. It also exposes the same checks as a reusable workflow for tagged releases.
 
-1. Automated checks must pass
-2. At least one maintainer review
-3. Address review feedback
-4. Maintainer merges PR
+Add meaningful tests for changed behavior. Source edits should compare before/after Tcl execution when applicable. Debugger and test-runner changes need real process fixtures; folder-specific tools need workspace integration checks. The [Insiders UI report](docs/INSIDERS_UI_TEST_REPORT.md) records the separate manual UI pass and its limits.
 
-## Release Process
+Before opening a pull request, run the relevant checks, update affected documentation and the changelog, and inspect the diff. Explain the behavior change and validation in the PR. Use conventional commit prefixes such as `feat:`, `fix:`, `docs:`, `test:`, and `chore:`.
 
-### Version Numbering
-We follow semantic versioning (MAJOR.MINOR.PATCH):
-- MAJOR: Breaking changes
-- MINOR: New features (backward compatible)
-- PATCH: Bug fixes
+## Packaging
 
-### Release Steps
-1. Update version in `package.json`
-2. Update CHANGELOG.md
-3. Create git tag
-4. Build and package extension
-5. Publish to marketplace
-
-### Publishing (Maintainers Only)
-```bash
-# Package extension
-npx vsce package
-
-# Publish to marketplace
-npx vsce publish
+```sh
+npm exec -- vsce ls
+npm run package
 ```
 
-## Getting Help
+Packaging runs `vscode:prepublish`, which compiles TypeScript and copies the Tcl server. The resulting file is `tcl-syntax-0.8.0.vsix` for this version. `.vscodeignore` excludes source tests, generated tests, and GitHub workflow files; review the file list when packaging rules or dependencies change. Normal VSCE secret/environment checks remain enabled.
 
-### Resources
-- [VS Code Extension API](https://code.visualstudio.com/api)
-- [TCL Documentation](https://www.tcl.tk/doc/)
-- [TypeScript Documentation](https://www.typescriptlang.org/docs/)
+Install the VSIX using **Extensions: Install from VSIX...**. For a custom output path, use `npm run package -- --out /path/to/tcl-syntax-0.8.0.vsix`.
 
-### Communication
-- GitHub Issues for bugs/features
-- GitHub Discussions for questions
-- Pull Request comments for code review
+## GitHub Releases
 
-## Recognition
+The release workflow accepts stable version tags such as `v0.8.0` or `0.8.0`. A tag must point to a commit reachable from `origin/main`; an earlier main commit is valid, so later main development cannot change the tagged build. Tags outside main skip the release jobs. Push the main commit before pushing its tag.
 
-Contributors are recognized in:
-- CHANGELOG.md (for significant contributions)
-- GitHub contributors page
-- Extension marketplace page
+For a release:
 
-Thank you for contributing to make TCL development in VS Code better!
+1. Update the version in `package.json` and both root version fields in `package-lock.json`. `npm version 0.8.0 --no-git-tag-version` performs the manifest/lock update without creating a tag.
+2. Add a dated `## [0.8.0] - YYYY-MM-DD` changelog section with the release notes, and update affected documentation. Commit the changes and merge them into `main`.
+3. After main checks pass, tag that commit and push the tag:
+
+```sh
+git switch main
+git pull --ff-only origin main
+git tag -a v0.8.0 -m 'TCL Syntax 0.8.0'
+git push origin v0.8.0
+```
+
+`.github/workflows/release.yml` then:
+
+- Validates tag/checkout identity, main ancestry, manifest/lock versions, and the dated changelog entry.
+- Runs the shared Linux/macOS/Windows checks against the tag's source.
+- Installs the lockfile dependencies and compiles/packages the exact validated commit.
+- Creates a GitHub Release for the existing tag, uses that version's changelog section as release notes, and attaches `tcl-syntax-0.8.0.vsix`.
+
+The workflow uses the repository's automatic `GITHUB_TOKEN`; only the publishing job requests `contents: write`. No personal token or Marketplace token is needed. GitHub Actions must be enabled and organization/repository policy must allow the publishing job's write permission. The workflow file must exist in the tagged commit. A changed tag is rejected before publication.
+
+To retry a failed release, rerun its Actions run. An existing matching VSIX asset is left unchanged; a missing asset can be uploaded to an existing release. Keep published version tags immutable and use a new version for changes. If a tag was pushed before its commit reached main, rerun the complete workflow after merging that commit. GitHub does not automatically retry it on the later main push.
+
+Marketplace publication remains a separate maintainer action; this automation publishes to [GitHub Releases](https://github.com/AmosAnderson/tcl_vscode/releases).
+
+For the underlying platform behavior, see [GitHub tag filters](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushbranchestagsbranches-ignoretags-ignore), [reusable workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows), and [the release CLI](https://cli.github.com/manual/gh_release_create).

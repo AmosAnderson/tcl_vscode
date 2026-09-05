@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { activeTclResource, resolveTclInterpreter, tclConfigurationTarget } from './executionContext';
 
 const execFileAsync = promisify(execFile);
 
@@ -156,7 +157,10 @@ export class TclInterpreterManager {
 
     private loadCustomInterpreters(): void {
         const config = vscode.workspace.getConfiguration('tcl');
-        const customPaths = config.get<string[]>('interpreters.customPaths', []);
+        const customPaths = [...new Set([
+            ...config.get<string[]>('interpreters.customPaths', []),
+            ...(vscode.workspace.workspaceFolders ?? []).flatMap(folder => vscode.workspace.getConfiguration('tcl', folder.uri).get<string[]>('interpreters.customPaths', []))
+        ])];
 
         for (const customPath of customPaths) {
             // Custom interpreters are added without version check
@@ -254,7 +258,8 @@ export class TclInterpreterManager {
         }
     }
 
-    public async selectInterpreter(): Promise<void> {
+    public async selectInterpreter(resource = activeTclResource()): Promise<void> {
+        await this.loadConfiguration(resolveTclInterpreter(resource));
         if (this.interpreters.length === 0) {
             vscode.window.showWarningMessage('No TCL interpreters found. Please install TCL or configure a custom path.');
             return;
@@ -274,12 +279,12 @@ export class TclInterpreterManager {
         if (selected) {
             const interpreter = this.interpreters.find(i => i.path === selected.description);
             if (interpreter) {
-                await this.setCurrentInterpreter(interpreter);
+                await this.setCurrentInterpreter(interpreter, resource);
             }
         }
     }
 
-    private async setCurrentInterpreter(interpreter: TclInterpreter): Promise<void> {
+    private async setCurrentInterpreter(interpreter: TclInterpreter, resource?: vscode.Uri): Promise<void> {
         this.currentInterpreter = interpreter;
 
         // Update all interpreters' default status
@@ -287,8 +292,8 @@ export class TclInterpreterManager {
         interpreter.isDefault = true;
 
         // Save to configuration
-        const config = vscode.workspace.getConfiguration('tcl');
-        await config.update('interpreter.path', interpreter.path, vscode.ConfigurationTarget.Global);
+        const config = vscode.workspace.getConfiguration('tcl', resource);
+        await config.update('interpreter.path', interpreter.path, tclConfigurationTarget(resource));
 
         // Update status bar
         this.updateStatusBar();
@@ -296,12 +301,13 @@ export class TclInterpreterManager {
         vscode.window.showInformationMessage(`TCL interpreter set to: ${interpreter.name}`);
     }
 
-    public getCurrentInterpreter(): TclInterpreter | null {
+    public getCurrentInterpreter(resource?: vscode.Uri): TclInterpreter | null {
+        if (resource) return this.interpreters.find(i => i.path === resolveTclInterpreter(resource)) ?? null;
         return this.currentInterpreter;
     }
 
-    public getInterpreterPath(): string {
-        return this.currentInterpreter?.path || 'tclsh';
+    public getInterpreterPath(resource?: vscode.Uri): string {
+        return resource ? resolveTclInterpreter(resource) : this.currentInterpreter?.path || resolveTclInterpreter();
     }
 
     public async validateInterpreter(interpreterPath: string): Promise<boolean> {

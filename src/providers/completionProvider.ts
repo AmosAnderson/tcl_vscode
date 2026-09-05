@@ -1,400 +1,113 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS, STRING_SUBCOMMANDS, TCL_SNIPPETS } from '../data/tclCommands';
-import { findMatchingBrace } from '../utils/tclUtils';
+import { analyzeDocument, Declaration } from '../analysis/documentAnalysis';
+import { getScriptWords, isStaticWord } from '../utils/tclParser';
 import { WorkspaceIndex } from '../analysis/workspaceIndex';
 
+export type PackageCompletionSource = (document: vscode.TextDocument) => readonly string[] | PromiseLike<readonly string[]>;
 export class TclCompletionItemProvider implements vscode.CompletionItemProvider {
-    private procedureCache: Map<string, vscode.CompletionItem[]> = new Map();
-    private packageCache: vscode.CompletionItem[] | null = null;
-    private changeSubscription: vscode.Disposable;
-
-    constructor() {
-        // Single listener to clear caches for changed documents to avoid leak of listeners per completion invocation
-        this.changeSubscription = vscode.workspace.onDidChangeTextDocument(e => {
-            const uri = e.document.uri.toString();
-            if (this.procedureCache.has(uri)) this.procedureCache.delete(uri);
-            this.packageCache = null;
-        });
-    }
-
-    public dispose() {
-        this.changeSubscription.dispose();
-    }
-
-    async provideCompletionItems(
-        document: vscode.TextDocument,
-        position: vscode.Position,
-        _token: vscode.CancellationToken,
-        _context: vscode.CompletionContext
-    ): Promise<vscode.CompletionItem[] | vscode.CompletionList> {
-        const linePrefix = document.lineAt(position).text.substring(0, position.character);
-        const completions: vscode.CompletionItem[] = [];
-
-        // Check if we're completing a string subcommand
-        if (linePrefix.match(/\bstring\s+\w*$/)) {
-            return this.getStringSubcommandCompletions();
-        }
-
-        // Check if we're completing after a namespace delimiter
-        if (linePrefix.match(/::\w*$/)) {
-            completions.push(...this.getNamespaceCompletions(document, linePrefix));
-        }
-
-        const packageMatch = linePrefix.match(/\bpackage\s+(require|provide|present)\s+([\w:]*$)/);
-        if (packageMatch) {
-            const prefix = packageMatch[2] ?? '';
-            const packageCompletions = await this.getPackageCompletions(document, prefix);
-            completions.push(...packageCompletions);
-        }
-
-        // Check if we're completing a variable reference
-        if (linePrefix.match(/\$\w*$/)) {
-            completions.push(...this.getVariableCompletions(document, position));
-        }
-
-        // Add built-in commands
-        completions.push(...this.getBuiltinCommandCompletions());
-
-        // Add procedures from current file and workspace index
-        completions.push(...this.getProcedureCompletions(document));
-        completions.push(...this.getWorkspaceProcedureCompletions(document));
-
-        // Add snippets
-        completions.push(...this.getSnippetCompletions());
-
-        return completions;
-    }
-
-    private getBuiltinCommandCompletions(): vscode.CompletionItem[] {
-        return TCL_BUILTIN_COMMANDS.map(cmd => {
-            const item = new vscode.CompletionItem(cmd.name, vscode.CompletionItemKind.Function);
-            item.detail = cmd.signature;
-            item.documentation = new vscode.MarkdownString(cmd.description);
-            item.insertText = cmd.name;
-            return item;
-        });
-    }
-
-    private getStringSubcommandCompletions(): vscode.CompletionItem[] {
-        return STRING_SUBCOMMANDS.map(sub => {
-            const item = new vscode.CompletionItem(sub, vscode.CompletionItemKind.Method);
-            item.detail = `string ${sub}`;
-            return item;
-        });
-    }
-
-    private getProcedureCompletions(document: vscode.TextDocument): vscode.CompletionItem[] {
-        const uri = document.uri.toString();
-
-        // Check cache first
-        if (this.procedureCache.has(uri)) {
-            return this.procedureCache.get(uri) || [];
-        }
-
-        const procedures: vscode.CompletionItem[] = [];
-        const text = document.getText();
-
-        // Match proc declarations and extract arguments using brace matching
-        const procPattern = /\bproc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*\{/g;
-        let match;
-
-        while ((match = procPattern.exec(text)) !== null) {
-            const procName = match[1];
-            const argBraceStart = match.index + match[0].length - 1; // Position of opening '{'
-
-            // Find matching closing brace for arguments
-            const argBraceEnd = findMatchingBrace(text, argBraceStart);
-
-            let args = '';
-            if (argBraceEnd !== -1) {
-                args = text.substring(argBraceStart + 1, argBraceEnd).trim();
-            }
-
-            const item = new vscode.CompletionItem(procName, vscode.CompletionItemKind.Function);
-            item.detail = `proc ${procName} {${args}}`;
-            item.documentation = new vscode.MarkdownString(`User-defined procedure`);
-
-            // Create snippet with argument placeholders
-            if (args) {
-                // Parse arguments (handle default values like {arg default})
-                const argList = this.parseArgumentList(args);
-                if (argList.length > 0) {
-                    const snippetArgs = argList.map((arg, index) => `$\{${index + 1}:${arg}}`).join(' ');
-                    item.insertText = new vscode.SnippetString(`${procName} ${snippetArgs}`);
-                } else {
-                    item.insertText = procName;
-                }
-            } else {
-                item.insertText = procName;
-            }
-
-            procedures.push(item);
-        }
-
-        // Cache the results
-        this.procedureCache.set(uri, procedures);
-
-        // (Cache invalidation handled by single subscription in constructor)
-
-        return procedures;
-    }
-
-    private parseArgumentList(argString: string): string[] {
-        // Simple argument parser that handles both "arg1 arg2" and "{arg1 default1} arg2"
-        const args: string[] = [];
-        let i = 0;
-        while (i < argString.length) {
-            // Skip whitespace
-            while (i < argString.length && /\s/.test(argString[i])) {
-                i++;
-            }
-            if (i >= argString.length) break;
-
-            if (argString[i] === '{') {
-                // Argument with default value
-                const closeIdx = argString.indexOf('}', i);
-                if (closeIdx !== -1) {
-                    const argDef = argString.substring(i + 1, closeIdx).trim();
-                    const argName = argDef.split(/\s+/)[0];
-                    if (argName) args.push(argName);
-                    i = closeIdx + 1;
-                } else {
-                    i++;
-                }
-            } else {
-                // Simple argument name
-                let j = i;
-                while (j < argString.length && !/\s/.test(argString[j]) && argString[j] !== '{') {
-                    j++;
-                }
-                const argName = argString.substring(i, j);
-                if (argName && argName !== 'args') {
-                    args.push(argName);
-                }
-                i = j;
-            }
-        }
-        return args;
-    }
-
-    private getVariableCompletions(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] {
-        const text = document.getText();
-        const offset = document.offsetAt(position);
-        const beforePosition = text.slice(0, offset);
-
-        const varNames = new Set<string>();
-        const addVar = (name: string) => {
-            if (name && !name.startsWith('{')) {
-                varNames.add(name);
-            }
-        };
-
-        const currentProc = this.locateCurrentProcedure(text, offset);
-        if (currentProc) {
-            currentProc.args.forEach(addVar);
-            this.extractVariableNames(currentProc.body.slice(0, offset - currentProc.bodyStart), addVar);
-        } else {
-            this.extractVariableNames(beforePosition, addVar);
-        }
-
-        return Array.from(varNames).map(varName => {
-            const item = new vscode.CompletionItem(varName, vscode.CompletionItemKind.Variable);
-            item.detail = `$${varName}`;
-            item.insertText = varName;
-            return item;
-        });
-    }
-
-    private extractVariableNames(source: string, addVar: (name: string) => void) {
-        const setRegex = /\bset\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-        let match: RegExpExecArray | null;
-        while ((match = setRegex.exec(source)) !== null) {
-            addVar(match[1]);
-        }
-
-        const variableRegex = /\bvariable\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-        while ((match = variableRegex.exec(source)) !== null) {
-            addVar(match[1]);
-        }
-
-        const globalRegex = /\bglobal\s+([a-zA-Z_][a-zA-Z0-9_\s]*)/g;
-        while ((match = globalRegex.exec(source)) !== null) {
-            match[1].split(/\s+/).forEach(name => addVar(name.trim()));
-        }
-    }
-
-    private locateCurrentProcedure(text: string, offset: number): { name: string; args: string[]; body: string; bodyStart: number; bodyEnd: number } | null {
-        const procRegex = /\bproc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*{([^}]*)}\s*{/g;
-        let match: RegExpExecArray | null;
-
-        while ((match = procRegex.exec(text)) !== null) {
-            const bodyStart = match.index + match[0].length;
-            const closeIndex = findMatchingBrace(text, bodyStart - 1);
-            if (closeIndex === -1) {
-                continue;
-            }
-
-            if (offset >= bodyStart && offset <= closeIndex) {
-                const args = match[2].trim() ? match[2].trim().split(/\s+/) : [];
-                const body = text.slice(bodyStart, closeIndex);
-                return {
-                    name: match[1],
-                    args,
-                    body,
-                    bodyStart,
-                    bodyEnd: closeIndex
-                };
-            }
-        }
-
-        return null;
-    }
-
-    /** Return procedure completions from other workspace files via the index. */
-    private getWorkspaceProcedureCompletions(currentDocument: vscode.TextDocument): vscode.CompletionItem[] {
+    constructor(private packageSource?: PackageCompletionSource) {}
+    dispose(): void {}
+    async provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, _context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | vscode.CompletionList> {
         const index = WorkspaceIndex.getInstance();
-        const currentUri = currentDocument.uri.toString();
-        const seen = new Set<string>();
-
-        // Avoid duplicating names already returned by getProcedureCompletions for the current file
-        const localProcs = this.procedureCache.get(currentUri);
-        if (localProcs) {
-            for (const item of localProcs) {
-                seen.add(item.label.toString());
+        await index.ready(token);
+        if (token.isCancellationRequested) return [];
+        const analysis = analyzeDocument(document);
+        const offset = document.offsetAt(position);
+        const linePrefix = document.lineAt(position).text.slice(0, position.character);
+        let context = analysis.contextAt(offset);
+        if (/(?:^|;)\s*#/.test(linePrefix)) return [];
+        if (!context && analysis.contextAt(offset, true)) return [];
+        const variableMatch = /\$(?:\{)?([\p{L}\p{M}\p{N}_:]*)$/u.exec(linePrefix);
+        if (variableMatch && context) {
+            const prefix = variableMatch[1];
+            const values = new Set<string>();
+            for (const symbol of analysis.table.getVisibleSymbols(position)) {
+                if (symbol.kind === 'procedure') continue;
+                if (symbol.kind !== 'parameter' && document.offsetAt(symbol.range.start) > offset) continue;
+                if (prefix.includes('::')) { if (symbol.qualifiedName) values.add(symbol.qualifiedName); }
+                else values.add(symbol.name);
             }
+            if (prefix.includes('::')) for (const symbol of index.getVariables()) if (symbol.qualifiedName) values.add(symbol.qualifiedName);
+            const normalized = prefix.startsWith('::') ? prefix : prefix.includes('::') ? '::' + prefix : prefix;
+            return [...values].filter(name => name.startsWith(normalized)).map(name => {
+                const insert = prefix.includes('::') && !prefix.startsWith('::') ? name.replace(/^::/, '') : name;
+                const item = new vscode.CompletionItem(insert, vscode.CompletionItemKind.Variable);
+                item.range = new vscode.Range(position.translate(0, -prefix.length), position);
+                item.insertText = insert;
+                item.detail = name;
+                return item;
+            });
         }
-
-        const items: vscode.CompletionItem[] = [];
-        for (const proc of index.getProcedures()) {
-            if (proc.uri.toString() === currentUri) {
-                continue;
+        const arrayMatch = /\$([\p{L}\p{M}\p{N}_:]+)\(([^)$[\]]*)$/u.exec(linePrefix);
+        if (arrayMatch && context) {
+            const keys = new Set<string>();
+            for (const command of analysis.contexts) {
+                const word = command.command.words[1];
+                if (command.command.words[0]?.value !== 'set' || !word || !isStaticWord(word)) continue;
+                const match = /^(.*)\(([^()]*)\)$/.exec(word.value);
+                if (match?.[1] === arrayMatch[1] && match[2].startsWith(arrayMatch[2])) keys.add(match[2]);
             }
-            if (seen.has(proc.name)) {
-                continue;
-            }
-            seen.add(proc.name);
-
-            const item = new vscode.CompletionItem(proc.name, vscode.CompletionItemKind.Function);
-            const args = proc.params.join(' ');
-            item.detail = `proc ${proc.name} {${args}}`;
-            item.documentation = new vscode.MarkdownString(
-                `Defined in ${vscode.workspace.asRelativePath(proc.uri)}`
-            );
-
-            if (proc.params.length > 0) {
-                const filtered = proc.params.filter(a => a !== 'args');
-                if (filtered.length > 0) {
-                    const snippetArgs = filtered.map((arg, i) => `$\{${i + 1}:${arg}}`).join(' ');
-                    item.insertText = new vscode.SnippetString(`${proc.name} ${snippetArgs}`);
-                } else {
-                    item.insertText = proc.name;
-                }
-            } else {
-                item.insertText = proc.name;
-            }
-
+            return [...keys].map(key => { const item = new vscode.CompletionItem(key, vscode.CompletionItemKind.Value); item.range = new vscode.Range(position.translate(0, -arrayMatch[2].length), position); return item; });
+        }
+        // Whitespace within a known script body starts a new command.
+        if (context && getScriptWords(context.command).some(body => body.contentStart <= offset && offset <= body.contentEnd)) context = undefined;
+        const words = context?.command.words ?? [];
+        const currentWord = words.find(word => word.start <= offset && offset <= word.end);
+        const wordIndex = currentWord ? words.indexOf(currentWord) : words.filter(word => word.end < offset).length;
+        if (words[0]?.value === 'package' && ['require', 'provide', 'present'].includes(words[1]?.value) && wordIndex >= 2) {
+            const names = new Set(index.getAnalyses(document).flatMap(item => [...item.packages]));
+            if (this.packageSource) for (const name of await this.packageSource(document)) names.add(name);
+            if (token.isCancellationRequested) return [];
+            return [...names].map(name => new vscode.CompletionItem(name, vscode.CompletionItemKind.Module));
+        }
+        if (wordIndex > 0) {
+            const prior = words.slice(0, wordIndex).map(word => word.value).join(' ');
+            const names = new Set(TCL_BUILTIN_COMMANDS.map(command => command.name).filter(name => name.startsWith(prior + ' ')).map(name => name.slice(prior.length + 1).split(' ')[0]));
+            if (prior === 'string') STRING_SUBCOMMANDS.forEach(name => names.add(name));
+            if (prior === 'my' && context?.className) for (const { declaration } of index.getDeclarations(document)) if (declaration.kind === 'method' && declaration.className === context.className) names.add(declaration.name);
+            if (wordIndex === 1 && context) index.getMethodsForReceiver(context, document).forEach(method => names.add(method.name));
+            return [...names].map(name => new vscode.CompletionItem(name, vscode.CompletionItemKind.Method));
+        }
+        const items: vscode.CompletionItem[] = TCL_BUILTIN_COMMANDS.filter(command => !command.name.includes(' ')).map(command => {
+            const item = new vscode.CompletionItem(command.name, vscode.CompletionItemKind.Function);
+            item.detail = command.signature;
+            item.documentation = new vscode.MarkdownString(command.description);
+            return item;
+        });
+        const namespace = context?.namespace ?? analysis.table.getScopeAt(position).namespace ?? '::';
+        const typed = currentWord ? analysis.text.slice(currentWord.contentStart, offset) : '';
+        const seen = new Set<string>();
+        for (const { declaration } of index.getDeclarations(document)) {
+            if (!['procedure', 'class', 'namespace'].includes(declaration.kind)) continue;
+            if (seen.has(declaration.qualifiedName)) continue;
+            seen.add(declaration.qualifiedName);
+            const name = declaration.namespace === namespace && !typed.includes('::') ? declaration.name.replace(/^.*::/, '') : declaration.qualifiedName;
+            const item = this.procedureItem(declaration, name);
+            if (currentWord) item.range = analysis.range(currentWord.contentStart, currentWord.contentEnd);
             items.push(item);
         }
+        // Imported aliases are useful command spellings in their importing namespace.
+        const resolution = index.getResolution(document);
+        for (const entry of resolution.imports.filter(item => item.namespace === namespace)) for (const { declaration } of index.getDeclarations(document)) {
+            if (declaration.kind !== 'procedure') continue;
+            const short = declaration.name.replace(/^.*::/, '');
+            const synthetic = { command: { start: offset, end: offset, words: [{ start: offset, end: offset, contentStart: offset, contentEnd: offset, text: short, value: short, kind: 'bare' as const, substitutions: [], commandSubstitutions: [] }] }, namespace: entry.namespace };
+            if (index.resolveCall(synthetic, document)?.target === declaration.qualifiedName && !items.some(item => item.label === short)) items.push(this.procedureItem(declaration, short));
+        }
+        items.push(...TCL_SNIPPETS.map(snippet => { const item = new vscode.CompletionItem(snippet.label, vscode.CompletionItemKind.Snippet); item.insertText = new vscode.SnippetString(snippet.insertText); item.detail = snippet.detail; return item; }));
         return items;
     }
-
-    private getNamespaceCompletions(document: vscode.TextDocument, linePrefix: string): vscode.CompletionItem[] {
-        const completions: vscode.CompletionItem[] = [];
-        
-        // Extract namespace prefix
-        const nsMatch = linePrefix.match(/((?:::)?(?:[a-zA-Z_][a-zA-Z0-9_]*::)*)/);
-        const nsPrefix = nsMatch ? nsMatch[1] : '';
-
-        // Collect from workspace index and current document
-        const namespaces = new Set<string>();
-
-        for (const ns of WorkspaceIndex.getInstance().getNamespaces()) {
-            namespaces.add(ns.name);
-        }
-
-        // Also scan current document to catch any not yet indexed
-        const text = document.getText();
-        const nsRegex = /namespace\s+eval\s+((?:::)?[a-zA-Z_][a-zA-Z0-9_:]*)/g;
-        let match;
-        while ((match = nsRegex.exec(text)) !== null) {
-            namespaces.add(match[1]);
-        }
-
-        namespaces.forEach(ns => {
-            if (ns.startsWith(nsPrefix)) {
-                const item = new vscode.CompletionItem(ns, vscode.CompletionItemKind.Module);
-                item.detail = 'namespace';
-                completions.push(item);
-            }
-        });
-
-        return completions;
-    }
-
-    private async getPackageCompletions(document: vscode.TextDocument, prefix: string): Promise<vscode.CompletionItem[]> {
-        if (this.packageCache) {
-            return this.filterCompletionsByPrefix(this.packageCache, prefix);
-        }
-
-        const names = new Set<string>();
-        const gatherFromText = (text: string) => {
-            const regex = /\bpackage\s+(require|provide|present)\s+(?:-exact\s+)?([A-Za-z0-9_:.]+)/g;
-            let match: RegExpExecArray | null;
-            while ((match = regex.exec(text)) !== null) {
-                names.add(match[2]);
-            }
-        };
-
-        gatherFromText(document.getText());
-        vscode.workspace.textDocuments.forEach(doc => {
-            if (doc !== document && doc.languageId === 'tcl') {
-                gatherFromText(doc.getText());
-            }
-        });
-
-        const limit = 200;
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**', limit);
-        for (const uri of files) {
-            if (names.size > 512) {
-                break;
-            }
-            try {
-                if (vscode.workspace.textDocuments.find(doc => doc.uri.toString() === uri.toString())) {
-                    continue;
-                }
-                const bytes = await vscode.workspace.fs.readFile(uri);
-                const text = Buffer.from(bytes).toString('utf8');
-                gatherFromText(text);
-            } catch {
-                // Ignore inaccessible files
-            }
-        }
-
-        const items = Array.from(names).map(name => {
-            const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Module);
-            item.detail = `package ${name}`;
-            return item;
-        });
-
-        this.packageCache = items;
-        return this.filterCompletionsByPrefix(items, prefix);
-    }
-
-    private filterCompletionsByPrefix(items: vscode.CompletionItem[], prefix: string): vscode.CompletionItem[] {
-        if (!prefix) {
-            return items;
-        }
-        const lower = prefix.toLowerCase();
-        return items.filter(item => item.label.toString().toLowerCase().startsWith(lower));
-    }
-
-    private getSnippetCompletions(): vscode.CompletionItem[] {
-        return TCL_SNIPPETS.map(snippet => {
-            const item = new vscode.CompletionItem(snippet.label, vscode.CompletionItemKind.Snippet);
-            item.insertText = new vscode.SnippetString(snippet.insertText);
-            item.detail = snippet.detail;
-            item.documentation = new vscode.MarkdownString(`Insert ${snippet.detail}`);
-            return item;
-        });
+    private procedureItem(declaration: Declaration, name: string): vscode.CompletionItem {
+        const item = new vscode.CompletionItem(name, declaration.kind === 'namespace' ? vscode.CompletionItemKind.Module : declaration.kind === 'class' ? vscode.CompletionItemKind.Class : vscode.CompletionItemKind.Function);
+        item.detail = declaration.params ? `${declaration.qualifiedName} {${declaration.params.value}}` : declaration.qualifiedName;
+        item.documentation = new vscode.MarkdownString(declaration.documentation);
+        if (declaration.kind === 'procedure') {
+            const snippet = new vscode.SnippetString();
+            snippet.appendText(name);
+            for (const parameter of declaration.parameters.filter(parameter => !parameter.variadic && parameter.defaultValue === undefined)) { snippet.appendText(' '); snippet.appendPlaceholder(parameter.name); }
+            item.insertText = snippet;
+        } else item.insertText = name;
+        return item;
     }
 }

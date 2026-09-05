@@ -1,229 +1,30 @@
 import * as vscode from 'vscode';
+import { analyzeDocument, Declaration } from '../analysis/documentAnalysis';
 import { WorkspaceIndex } from '../analysis/workspaceIndex';
 
+export function declarationKind(declaration: Declaration): vscode.SymbolKind {
+    return declaration.kind === 'namespace' ? vscode.SymbolKind.Namespace : declaration.kind === 'class' ? vscode.SymbolKind.Class : declaration.kind === 'method' ? vscode.SymbolKind.Method : vscode.SymbolKind.Function;
+}
 export class TclDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
-    provideDocumentSymbols(
-        document: vscode.TextDocument,
-        _token: vscode.CancellationToken
-    ): vscode.ProviderResult<vscode.SymbolInformation[] | vscode.DocumentSymbol[]> {
-        const symbols: vscode.DocumentSymbol[] = [];
-        const text = document.getText();
-        const lines = text.split('\n');
-
-        // Stack to track namespace context; each entry records the brace depth at which the
-        // namespace block was opened so that proc-body closing braces don't accidentally pop it.
-        const namespaceStack: { symbol: vscode.DocumentSymbol; depth: number }[] = [];
-        let currentNamespace: vscode.DocumentSymbol | null = null;
-        let braceDepth = 0;
-
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-            const line = lines[lineNum];
-
-            // Update brace depth character-by-character and pop namespaces as they close.
-            // This must happen before we try to match new namespace definitions on this line.
-            for (const ch of line) {
-                if (ch === '{') {
-                    braceDepth++;
-                } else if (ch === '}') {
-                    braceDepth--;
-                    while (namespaceStack.length > 0 &&
-                           braceDepth < namespaceStack[namespaceStack.length - 1].depth) {
-                        namespaceStack.pop();
-                        currentNamespace = namespaceStack.length > 0
-                            ? namespaceStack[namespaceStack.length - 1].symbol
-                            : null;
-                    }
-                }
-            }
-
-            // Match procedure definitions
-            const procMatch = line.match(/^\s*proc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s*\{/);
-            if (procMatch) {
-                const procName = procMatch[1];
-
-                // Extract arguments - look for simple case first
-                const simpleMatch = line.match(/^\s*proc\s+[a-zA-Z_][a-zA-Z0-9_:]*\s*\{([^}]*)\}/);
-                const args = simpleMatch
-                    ? simpleMatch[1].trim()
-                    : '...'; // Multi-line argument list: indicate it has args
-
-                const range = new vscode.Range(lineNum, 0, lineNum, line.length);
-                const col = Math.max(0, line.indexOf(procName));
-                const selectionRange = new vscode.Range(
-                    lineNum,
-                    col,
-                    lineNum,
-                    col + procName.length
-                );
-
-                const procSymbol = new vscode.DocumentSymbol(
-                    procName,
-                    args ? `{${args}}` : '',
-                    vscode.SymbolKind.Function,
-                    range,
-                    selectionRange
-                );
-
-                if (currentNamespace) {
-                    currentNamespace.children.push(procSymbol);
-                } else {
-                    symbols.push(procSymbol);
-                }
-            }
-
-            // Match namespace definitions
-            const nsMatch = line.match(/^\s*namespace\s+eval\s+((?:::)?[a-zA-Z_][a-zA-Z0-9_:]*)\s*{/);
-            if (nsMatch) {
-                const nsName = nsMatch[1];
-                
-                const range = new vscode.Range(lineNum, 0, lineNum, line.length);
-                const nsCol = Math.max(0, line.indexOf(nsName));
-                const selectionRange = new vscode.Range(
-                    lineNum,
-                    nsCol,
-                    lineNum,
-                    nsCol + nsName.length
-                );
-
-                const nsSymbol = new vscode.DocumentSymbol(
-                    nsName,
-                    'namespace',
-                    vscode.SymbolKind.Namespace,
-                    range,
-                    selectionRange
-                );
-
-                if (currentNamespace) {
-                    currentNamespace.children.push(nsSymbol);
-                } else {
-                    symbols.push(nsSymbol);
-                }
-
-                namespaceStack.push({ symbol: nsSymbol, depth: braceDepth });
-                currentNamespace = nsSymbol;
-            }
-
-            // Match global variables
-            const globalMatch = line.match(/^\s*global\s+([a-zA-Z_][a-zA-Z0-9_\s]*)/);
-            if (globalMatch) {
-                const varNames = globalMatch[1].split(/\s+/).filter(v => v.trim());
-                
-                varNames.forEach(varName => {
-                    const range = new vscode.Range(lineNum, 0, lineNum, line.length);
-                    const varIndex = Math.max(0, line.indexOf(varName));
-                    const selectionRange = new vscode.Range(
-                        lineNum,
-                        varIndex,
-                        lineNum,
-                        varIndex + varName.length
-                    );
-
-                    const varSymbol = new vscode.DocumentSymbol(
-                        varName,
-                        'global variable',
-                        vscode.SymbolKind.Variable,
-                        range,
-                        selectionRange
-                    );
-
-                    if (currentNamespace) {
-                        currentNamespace.children.push(varSymbol);
-                    } else {
-                        symbols.push(varSymbol);
-                    }
-                });
-            }
-
-            // Match variable declarations
-            const variableMatch = line.match(/^\s*variable\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
-            if (variableMatch) {
-                const varName = variableMatch[1];
-                
-                const range = new vscode.Range(lineNum, 0, lineNum, line.length);
-                const varCol = Math.max(0, line.indexOf(varName));
-                const selectionRange = new vscode.Range(
-                    lineNum,
-                    varCol,
-                    lineNum,
-                    varCol + varName.length
-                );
-
-                const varSymbol = new vscode.DocumentSymbol(
-                    varName,
-                    'namespace variable',
-                    vscode.SymbolKind.Variable,
-                    range,
-                    selectionRange
-                );
-
-                if (currentNamespace) {
-                    currentNamespace.children.push(varSymbol);
-                } else {
-                    symbols.push(varSymbol);
-                }
-            }
-
-            // Match package provide
-            const packageMatch = line.match(/^\s*package\s+provide\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+([\d.]+)/);
-            if (packageMatch) {
-                const packageName = packageMatch[1];
-                const version = packageMatch[2];
-                
-                const range = new vscode.Range(lineNum, 0, lineNum, line.length);
-                const pkgCol = Math.max(0, line.indexOf(packageName));
-                const selectionRange = new vscode.Range(
-                    lineNum,
-                    pkgCol,
-                    lineNum,
-                    pkgCol + packageName.length
-                );
-
-                const packageSymbol = new vscode.DocumentSymbol(
-                    packageName,
-                    `version ${version}`,
-                    vscode.SymbolKind.Package,
-                    range,
-                    selectionRange
-                );
-
-                symbols.push(packageSymbol);
-            }
-
+    provideDocumentSymbols(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.DocumentSymbol[] {
+        const analysis = analyzeDocument(document);
+        const result: vscode.DocumentSymbol[] = [];
+        const entries: { declaration: Declaration; symbol: vscode.DocumentSymbol }[] = [];
+        for (const declaration of analysis.declarations) {
+            if (token.isCancellationRequested) return [];
+            const symbol = new vscode.DocumentSymbol(declaration.kind === 'lambda' ? '(lambda)' : declaration.name, declaration.params ? `{${declaration.params.value}}` : declaration.kind, declarationKind(declaration), analysis.range(declaration.command.start, declaration.command.end), analysis.declarationRange(declaration));
+            const parent = entries.filter(entry => entry.declaration.body && entry.declaration.body.contentStart <= declaration.command.start && entry.declaration.body.contentEnd >= declaration.command.end).sort((a, b) => b.declaration.command.start - a.declaration.command.start)[0];
+            if (parent) parent.symbol.children.push(symbol); else result.push(symbol);
+            entries.push({ declaration, symbol });
         }
-
-        return symbols;
+        return result;
     }
 }
-
 export class TclWorkspaceSymbolProvider implements vscode.WorkspaceSymbolProvider {
-    async provideWorkspaceSymbols(
-        query: string,
-        _token: vscode.CancellationToken
-    ): Promise<vscode.SymbolInformation[]> {
+    async provideWorkspaceSymbols(query: string, token: vscode.CancellationToken): Promise<vscode.SymbolInformation[]> {
         const index = WorkspaceIndex.getInstance();
-        const symbols: vscode.SymbolInformation[] = [];
-
-        for (const proc of index.getProcedures(query)) {
-            const location = new vscode.Location(proc.uri, new vscode.Position(proc.line, 0));
-            const args = proc.params.length > 0 ? `{${proc.params.join(' ')}}` : '';
-            symbols.push(new vscode.SymbolInformation(
-                proc.name,
-                vscode.SymbolKind.Function,
-                args,
-                location
-            ));
-        }
-
-        for (const ns of index.getNamespaces(query)) {
-            const location = new vscode.Location(ns.uri, new vscode.Position(ns.line, 0));
-            symbols.push(new vscode.SymbolInformation(
-                ns.name,
-                vscode.SymbolKind.Namespace,
-                'namespace',
-                location
-            ));
-        }
-
-        return symbols;
+        await index.ready(token);
+        if (token.isCancellationRequested) return [];
+        return index.getDeclarations().filter(item => item.declaration.kind !== 'lambda' && item.declaration.qualifiedName.toLowerCase().includes(query.toLowerCase())).map(({ declaration, analysis }) => new vscode.SymbolInformation(declaration.name, declarationKind(declaration), declaration.className ?? declaration.namespace, new vscode.Location(analysis.document.uri, analysis.declarationRange(declaration))));
     }
 }

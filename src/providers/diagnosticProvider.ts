@@ -2,18 +2,32 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
-import { createTempTclPath, computeMultilineStringLines } from '../utils/tclUtils';
-import { getScriptWords, parseTclScript, TclCommand } from '../utils/tclParser';
+import { createTempTclPath } from '../utils/tclUtils';
+import { getScriptWords, parseTclScript, TclCommand, walkTclCommands } from '../utils/tclParser';
+
+import { resolveTclInterpreter } from '../tools/executionContext';
 
 const execFileAsync = promisify(execFile);
 
 export class TclDiagnosticProvider {
     private diagnosticCollection: vscode.DiagnosticCollection;
-    private outputChannel: vscode.OutputChannel;
+    private outputChannel: vscode.OutputChannel | undefined;
+
+    private readonly pending = new Map<string, { abort: AbortController; timer: ReturnType<typeof setTimeout>; resolve: () => void }>();
+    private readonly unavailable = new Map<string, number>();
+
+    public getDiagnostics(uri: vscode.Uri): readonly vscode.Diagnostic[] {
+        return this.diagnosticCollection.get(uri) ?? [];
+    }
+
+    public clear(uri: vscode.Uri): void {
+        const request = this.pending.get(uri.toString());
+        if (request) { clearTimeout(request.timer); request.abort.abort(); request.resolve(); this.pending.delete(uri.toString()); }
+        this.diagnosticCollection.delete(uri);
+    }
 
     constructor() {
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection('tcl');
-        this.outputChannel = vscode.window.createOutputChannel('TCL Diagnostics');
     }
 
     public async provideDiagnostics(document: vscode.TextDocument): Promise<void> {
@@ -21,28 +35,29 @@ export class TclDiagnosticProvider {
             return;
         }
 
-        // Check if diagnostics are enabled
-        const config = vscode.workspace.getConfiguration('tcl');
-        const diagnosticsEnabled = config.get<boolean>('diagnostics.enable', true);
-        
-        if (!diagnosticsEnabled) {
-            this.diagnosticCollection.clear();
-            return;
-        }
-
+        this.clear(document.uri);
+        const config = vscode.workspace.getConfiguration('tcl', document.uri);
+        if (!config.get<boolean>('diagnostics.enable', true)) return;
         const version = document.version;
         const diagnostics: vscode.Diagnostic[] = [];
-        
-        // Basic syntax validation
         this.validateBasicSyntax(document, diagnostics);
-        
-        // Advanced validation with tclsh if available and enabled
-        const useTclsh = config.get<boolean>('diagnostics.useTclsh', true);
-        if (useTclsh) {
-            await this.validateWithTclsh(document, diagnostics);
-        }
-
-        if (document.version === version) this.diagnosticCollection.set(document.uri, diagnostics);
+        this.diagnosticCollection.set(document.uri, diagnostics);
+        if (!config.get<boolean>('diagnostics.useTclsh', true)) return;
+        const interpreter = resolveTclInterpreter(document.uri);
+        if ((this.unavailable.get(interpreter) ?? 0) > Date.now()) return;
+        await new Promise<void>(resolve => {
+            const abort = new AbortController();
+            const timer = setTimeout(async () => {
+                try {
+                    await this.validateWithTclsh(document, diagnostics, abort.signal, interpreter);
+                    if (!abort.signal.aborted && document.version === version && !document.isClosed) this.diagnosticCollection.set(document.uri, diagnostics);
+                } finally {
+                    if (this.pending.get(document.uri.toString())?.abort === abort) this.pending.delete(document.uri.toString());
+                    resolve();
+                }
+            }, Math.max(0, config.get<number>('diagnostics.debounceMs', 200)));
+            this.pending.set(document.uri.toString(), { abort, timer, resolve });
+        });
     }
 
     private validateBasicSyntax(document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): void {
@@ -67,71 +82,17 @@ export class TclDiagnosticProvider {
     }
 
     private checkCommonIssues(document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): void {
-        const text = document.getText();
-        const lines = text.split('\n');
-        const insideString = computeMultilineStringLines(lines);
-
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-            const line = lines[lineNum].trim();
-            
-            // Skip comments, empty lines, and lines inside multiline strings
-            if (line.startsWith('#') || line.length === 0 || insideString[lineNum]) continue;
-
-            // Warn on missing space before brace (e.g., if{ ... })
-            const missingSpaceBeforeBrace = /\b(if|while|for|foreach|switch)\{/;
-            if (missingSpaceBeforeBrace.test(line)) {
-                const m = line.match(missingSpaceBeforeBrace)!;
-                const pos = lines[lineNum].indexOf(m[0]) + m[1].length;
-                this.addDiagnostic(
-                    diagnostics,
-                    lineNum,
-                    pos,
-                    pos + 1,
-                    `Missing space after '${m[1]}' before '{'`,
-                    vscode.DiagnosticSeverity.Warning
-                );
-            }
-
-            // Warn on parentheses after control keywords (Tcl prefers braces)
-            const parenAfterKeyword = /\b(if|while|for|foreach|switch)\s*\(/;
-            if (parenAfterKeyword.test(line)) {
-                const m = line.match(parenAfterKeyword)!;
-                const pos = lines[lineNum].indexOf(m[0]) + m[1].length;
-                this.addDiagnostic(
-                    diagnostics,
-                    lineNum,
-                    pos,
-                    pos + 1,
-                    `TCL uses braces for conditions: use "${m[1]} { ... }"`,
-                    vscode.DiagnosticSeverity.Warning
-                );
-            }
-
-            // Check for potential variable name issues
-            const varPattern = /\$([a-zA-Z_][a-zA-Z0-9_]*)/g;
-            let varMatch;
-            while ((varMatch = varPattern.exec(line)) !== null) {
-                const varName = varMatch[1];
-                // Warn about potential naming conventions
-                if (varName.length === 1 && /[A-Z]/.test(varName)) {
-                    const pos = lines[lineNum].indexOf(varMatch[0]);
-                    this.addDiagnostic(diagnostics, lineNum, pos, pos + varMatch[0].length,
-                        'Single letter uppercase variable names may be confusing', 
-                        vscode.DiagnosticSeverity.Information);
-                }
-            }
-
-            // Check for potential command substitution issues
-            if (line.includes('`')) {
-                const pos = lines[lineNum].indexOf('`');
-                this.addDiagnostic(diagnostics, lineNum, pos, pos + 1,
-                    'Use [command] instead of `command` for command substitution', 
-                    vscode.DiagnosticSeverity.Warning);
-            }
+        for (const command of walkTclCommands(document.getText())) {
+            const word = command.words[0];
+            const match = /^(if|while|for|foreach|switch)\{/.exec(word.value);
+            if (!match) continue;
+            const position = document.positionAt(word.contentStart + match[1].length);
+            this.addDiagnostic(diagnostics, position.line, position.character, position.character + 1,
+                `Missing space after '${match[1]}' before '{'`, vscode.DiagnosticSeverity.Warning);
         }
     }
 
-    private async validateWithTclsh(document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): Promise<void> {
+    private async validateWithTclsh(document: vscode.TextDocument, diagnostics: vscode.Diagnostic[], signal: AbortSignal, configured: string): Promise<void> {
         // The interpreter receives source as data. info complete performs parsing only;
         // source/eval/substitution of document text must never be used for diagnostics.
         const dataFile = createTempTclPath('validate');
@@ -139,15 +100,17 @@ export class TclDiagnosticProvider {
         try {
             fs.writeFileSync(dataFile, document.getText(), 'utf8');
             fs.writeFileSync(checkFile, 'set channel [open [lindex $argv 0] r]\nset script [read $channel]\nclose $channel\nputs [info complete $script]\n', 'utf8');
-            const configured = vscode.workspace.getConfiguration('tcl').get<string>('interpreter.path', 'tclsh');
-            const { stdout } = await execFileAsync(configured, [checkFile, dataFile], { timeout: 2000, maxBuffer: 1024 });
+            const { stdout } = await execFileAsync(configured, [checkFile, dataFile], { timeout: 2000, maxBuffer: 1024, signal });
             if (stdout.trim() === '0' && !diagnostics.some(d => d.severity === vscode.DiagnosticSeverity.Error)) {
                 const position = document.positionAt(document.getText().length);
                 this.addDiagnostic(diagnostics, position.line, position.character, position.character,
                     'Incomplete Tcl command', vscode.DiagnosticSeverity.Error);
             }
         } catch (error) {
-            this.outputChannel.appendLine(`TCL completeness check unavailable: ${error}`);
+            if (!signal.aborted) {
+                this.unavailable.set(configured, Date.now() + 30000);
+                (this.outputChannel ??= vscode.window.createOutputChannel('TCL Diagnostics')).appendLine(`TCL completeness check unavailable: ${error}`);
+            }
         } finally {
             for (const file of [dataFile, checkFile]) {
                 try { fs.unlinkSync(file); } catch { /* best-effort cleanup */ }
@@ -174,7 +137,8 @@ export class TclDiagnosticProvider {
     }
 
     public dispose(): void {
+        for (const key of [...this.pending.keys()]) this.clear(vscode.Uri.parse(key));
         this.diagnosticCollection.dispose();
-        this.outputChannel.dispose();
+        this.outputChannel?.dispose();
     }
 }

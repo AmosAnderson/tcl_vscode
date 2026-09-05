@@ -1,8 +1,8 @@
 {
   "name": "tcl-syntax",
   "displayName": "TCL Syntax",
-  "description": "TCL language support with syntax highlighting and formatting",
-  "version": "0.7.1",
+  "description": "Tcl language support with IntelliSense, formatting, debugging, testing, and project tools",
+  "version": "0.8.0",
   "icon": "images/tcl_plugin_logo_512.png",
   "engines": {
     "vscode": "^1.136.0"
@@ -30,7 +30,8 @@
     "onDebugResolve:tcl",
     "onDebugInitialConfigurations",
     "workspaceContains:**/*.tcl",
-    "workspaceContains:**/*.test"
+    "workspaceContains:**/*.test",
+    "onTaskType:tcl"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -63,27 +64,32 @@
         "tcl.format.alignBraces": {
           "type": "boolean",
           "default": true,
-          "description": "Align opening and closing braces"
+          "description": "Align opening and closing braces",
+          "scope": "resource"
         },
         "tcl.format.spacesAroundOperators": {
           "type": "boolean",
           "default": true,
-          "description": "Add spaces around operators"
+          "description": "Add spaces around operators",
+          "scope": "resource"
         },
         "tcl.format.spacesInsideBraces": {
           "type": "boolean",
           "default": true,
-          "description": "Add spaces inside braces"
+          "description": "Add spaces inside braces",
+          "scope": "resource"
         },
         "tcl.format.spacesInsideBrackets": {
           "type": "boolean",
           "default": false,
-          "description": "Add spaces inside brackets"
+          "description": "Add spaces inside brackets",
+          "scope": "resource"
         },
         "tcl.format.enable": {
           "type": "boolean",
           "default": false,
-          "description": "Enable automatic TCL formatting on save"
+          "description": "Enable automatic TCL formatting on save",
+          "scope": "resource"
         },
         "tcl.diagnostics.enable": {
           "type": "boolean",
@@ -98,17 +104,20 @@
         "tcl.repl.tclPath": {
           "type": "string",
           "default": "tclsh",
-          "description": "Path to TCL interpreter for REPL"
+          "description": "Path to TCL interpreter for REPL",
+          "scope": "resource"
         },
         "tcl.test.tclPath": {
           "type": "string",
           "default": "tclsh",
-          "description": "Path to TCL interpreter for running tests"
+          "description": "Path to TCL interpreter for running tests",
+          "scope": "resource"
         },
         "tcl.interpreter.path": {
           "type": "string",
           "default": "tclsh",
-          "description": "Path to the default TCL interpreter"
+          "description": "Path to the default TCL interpreter",
+          "scope": "resource"
         },
         "tcl.interpreters.customPaths": {
           "type": "array",
@@ -118,27 +127,114 @@
         "tcl.packages.autoDiscovery": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically discover TCL packages in workspace"
+          "description": "Automatically discover TCL packages in workspace",
+          "scope": "resource"
         },
         "tcl.packages.installDirectory": {
           "type": "string",
           "default": "",
-          "description": "Default directory to install TCL packages to (must be on auto_path)"
+          "description": "Default directory to install TCL packages to (must be on auto_path)",
+          "scope": "resource"
         },
         "tcl.lint.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Enable TCL linting for style issues"
+          "description": "Enable TCL linting for style issues",
+          "scope": "resource"
         },
         "tcl.lint.maxLineLength": {
           "type": "number",
           "default": 120,
-          "description": "Maximum line length before warning (0 to disable)"
+          "description": "Maximum line length before warning (0 to disable)",
+          "scope": "resource"
         },
         "tcl.lint.exprBracing": {
           "type": "boolean",
           "default": true,
-          "description": "Warn when expr arguments are not braced"
+          "description": "Warn when expr arguments are not braced",
+          "scope": "resource"
+        },
+        "tcl.codeLens.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show TCL CodeLens actions",
+          "scope": "resource"
+        },
+        "tcl.codeLens.references": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show procedure reference counts",
+          "scope": "resource"
+        },
+        "tcl.codeLens.tests": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Run and Debug actions for tests",
+          "scope": "resource"
+        },
+        "tcl.analysis.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**"
+          ],
+          "description": "Glob patterns excluded from TCL workspace analysis"
+        },
+        "tcl.diagnostics.debounceMs": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5000,
+          "default": 200,
+          "description": "Delay interpreter completeness checks after editing",
+          "scope": "resource"
+        },
+        "tcl.lint.rules": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "enum": [
+              "off",
+              "error",
+              "warning",
+              "information",
+              "hint"
+            ]
+          },
+          "description": "Override lint severity by rule: expr-bracing, catch-no-var, switch-default, deprecated, line-length, global-shorthand",
+          "scope": "resource"
+        },
+        "tcl.run.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Default script arguments",
+          "scope": "resource"
+        },
+        "tcl.run.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "Script working directory (empty uses its workspace folder)",
+          "scope": "resource"
+        },
+        "tcl.run.env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Environment variables for running scripts",
+          "scope": "resource"
+        },
+        "tcl.run.rememberArgs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Remember arguments entered with Run with Arguments",
+          "scope": "resource"
         }
       }
     },
@@ -258,6 +354,10 @@
       {
         "command": "tcl.runWithArgs",
         "title": "TCL: Run with Arguments..."
+      },
+      {
+        "command": "tcl.runTestItem",
+        "title": "TCL: Run Selected Test"
       }
     ],
     "snippets": [
@@ -266,10 +366,12 @@
         "path": "./snippets/tcl.json"
       }
     ],
+    "breakpoints": [{ "language": "tcl" }],
     "debuggers": [
       {
         "type": "tcl",
         "label": "TCL Debug",
+        "languages": ["tcl"],
         "configurationAttributes": {
           "launch": {
             "required": [
@@ -305,6 +407,53 @@
                 "type": "boolean",
                 "description": "Stop on entry",
                 "default": true
+              },
+              "debugThreads": {
+                "type": "boolean",
+                "default": false,
+                "description": "Debug newly created Tcl Thread workers with independent pause and stepping"
+              }
+            }
+          },
+          "attach": {
+            "required": [
+              "port",
+              "token"
+            ],
+            "properties": {
+              "host": {
+                "type": "string",
+                "default": "127.0.0.1",
+                "description": "Loopback address; use an SSH tunnel for a remote target"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535,
+                "description": "Port of an independently started TCL debug server"
+              },
+              "token": {
+                "type": "string",
+                "minLength": 16,
+                "description": "Token matching the server TCL_DEBUG_TOKEN environment variable"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false
+              },
+              "sourceFileMap": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "default": {},
+                "description": "Remote source directory prefixes mapped to local directory prefixes"
+              },
+              "connectTimeout": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 10000,
+                "description": "Connection timeout in milliseconds"
               }
             }
           }
@@ -332,6 +481,56 @@
           }
         ]
       }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "tcl",
+        "required": [],
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "TCL script path"
+          },
+          "command": {
+            "type": "string",
+            "description": "Package action: run_tests, build_package, install_deps, package"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "interpreter": {
+            "type": "string"
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "tcl",
+        "owner": "tcl",
+        "fileLocation": [
+          "autoDetect",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^\\s*\\(file \"(.+)\" line (\\d+)\\)\\s*$",
+          "file": 1,
+          "line": 2,
+          "message": 0
+        }
+      }
     ]
   },
   "scripts": {
@@ -342,7 +541,9 @@
     "pretest": "npm run compile",
     "lint": "oxlint src",
     "test": "node ./out/test/runTest.js",
-    "package": "vsce package --allow-package-all-secrets --allow-package-env-file"
+    "package": "vsce package",
+    "test:unit": "npm run compile && node ./out/test/runUnitTests.js",
+    "test:integration": "npm test"
   },
   "dependencies": {
     "@vscode/debugadapter": "^1.68.0",

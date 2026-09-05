@@ -1,63 +1,30 @@
-# TCL VS Code Extension Roadmap
+# TCL Syntax roadmap
 
-This document tracks the major milestones for the TCL language extension. It mirrors the phased plan used during development and clarifies what is available today versus what is scheduled next.
+Version 0.8.0 completes the feature packages identified in the September 2026 audit. The [implementation record](docs/FEATURE_IMPLEMENTATION_PLAN.md) describes the supported scope and evidence; the [changelog](CHANGELOG.md) records version history.
 
-## ✅ Completed Milestones
+## Available in 0.8.0
 
-### Phase 1 – Core Language Support
-- Basic extension activation and language configuration
-- Syntax highlighting with namespaces, Tcl/Tk/Expect commands, and embedded script support
-- Comment toggling, bracket matching, auto-closing pairs, and folding markers
+- Syntax highlighting for Tcl/Tk/Expect, snippets, language configuration, and document/range formatting with contextual switch-body handling.
+- Shared parsed analysis for declarations, bindings, definitions, references, hover, completion, procedure signatures with defaults, and reference/test CodeLens.
+- Static namespace imports/paths, TclOO classes/methods/known receivers, and literal lambda scopes; ambiguous dynamic constructs remain unresolved.
+- Syntax/binding-based variable and namespace edits, guarded extraction/inlining, class/method rename, and supported lint quick fixes.
+- Immediate structural diagnostics plus cancellable interpreter completeness checks that do not execute source; configurable style rules and targeted suppression comments.
+- Test Explorer Run, Debug, and native Coverage using the same case selection, with failure status, owned-process cancellation, original-source breakpoints, and clean output.
+- Native editor breakpoints, conditional breakpoints/logpoints, selected-frame variables/evaluation/edits, arrays, correct stop reasons, and conservative coalescing of assignment substitutions.
+- Authenticated loopback attach and SSH-forwarded remote use with source maps, plus opt-in debugging of newly created Thread workers in launched sessions.
+- Resource-aware interpreter/cwd/run configuration, REPL restart, native task contributions, dependency constraints, verified local package installation, and parameterized project/package scaffolds.
+- Reusable three-platform CI and GitHub Release automation that packages version tags reachable from main.
 
-### Phase 2 – Formatter
-- Document and range formatting commands
-- Configurable rules for indentation, brace alignment, operator spacing, and spacing inside braces/brackets
-- Format-on-save toggle via `tcl.format.enable`
+The [Insiders UI report](docs/INSIDERS_UI_TEST_REPORT.md) records representative verification. Local extension-host checks passed 185 tests, with 101 also runnable standalone. CI and release workflows are configured; remote runner/publication results require a pushed workflow and tag. See [debugging](docs/DEBUGGING.md) and [configuration](docs/CONFIGURATION.md) for operational limits.
 
-### Phase 3 – IntelliSense & Navigation
-- Completion items for 800+ Tcl, Tk, and Expect commands
-- String subcommand completions and user-defined procedure snippets
-- Variable suggestions scoped to the current procedure/frame
-- Package and namespace completion based on workspace analysis
-- Document/workspace symbol providers, definition lookup, and reference search
-- Hover tooltips showing signatures, documentation, and inline variable info
+## Future candidates
 
-### Phase 4 – Diagnostics & Code Actions
-- Structural syntax checks (brace/bracket pairing, unclosed strings)
-- Optional validation via `tclsh`
-- Quick fixes for common issues surfaced through the diagnostic provider
+These are candidates rather than committed delivery dates:
 
-### Phase 5 – Testing & Debugging
-- Debug adapter with full breakpoints, stepping (step in/out/over), call stack, variable inspection, and expression evaluation via TCP socket protocol and source-level instrumentation
-- REPL commands (`tcl.startREPL`, `tcl.evaluateSelection`, etc.)
-- Integrated test explorer wiring with coverage commands (`tcl.generateCoverage`, `tcl.clearCoverage`)
-- Refactoring helpers (rename, extract procedure/variable, inline variable)
+- Semantic tokens and call hierarchy using the shared analysis model.
+- Parser-based folding.
+- Pause-on-error support that preserves an inspectable error frame.
+- Attach-mode worker discovery and preexisting Thread pools.
+- Broader static receiver resolution and source-level stepping for other dynamic/nested Tcl forms.
 
-### Phase 6 – Tooling Integration
-- Interpreter discovery (system, TclKit, ActiveTcl, custom)
-- Dependency manager with real package installation (teacup + manual fallback)
-- Package tasks and project templates
-- Task provider that surfaces common Tcl build scripts
-
-### Phase 7 – Linting & Snippets
-- Lint provider with 6 style rules (expr bracing, switch default, catch variable, line length, deprecated commands, global variable shorthand)
-- Quick fixes for fixable lint warnings
-- 26+ snippets for Tk widgets, Expect automation, TclOO, and common patterns
-
-### Phase 8 – Advanced Features
-- **Enhanced formatter** for continuation lines, deeply nested structures, multi-line `expr`, and switch body alignment
-- **Scope-aware semantic analysis** for rename and refactoring operations (local/global/upvar/parameter tracking)
-- **Workspace-wide symbol index** with file-watcher invalidation for fast cross-file lookups
-- **Conditional breakpoints** and **logpoints** in the debug adapter
-- **Array variable expansion** in the debug variables panel
-- **Inline procedure** and **extract to namespace** refactorings
-- **Command palette utilities** for running scripts with different interpreters and custom arguments
-
-## 🔜 Planned Enhancements
-
-### Future Features
-- **Remote debugging** support for TCL applications running on remote hosts
-- **Multi-threaded debugging** for Tcl Thread extension users
-- **Code lens** for procedure references and test run actions
-
-Have suggestions or feature requests? Please open an issue or contribute via pull requests—community input drives the roadmap.
+Feature requests and contributions can be discussed in repository issues and pull requests. [CONTRIBUTING.md](CONTRIBUTING.md) covers development and the tagged-release process.

@@ -1,0 +1,114 @@
+name: Release VSIX
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      eligible: ${{ steps.release.outputs.eligible }}
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      asset: ${{ steps.release.outputs.asset }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          package-manager-cache: false
+      - name: Validate version and main ancestry
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node .github/scripts/prepare-release.mjs "$RELEASE_TAG"
+
+  checks:
+    needs: validate
+    if: needs.validate.outputs.eligible == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    needs: [validate, checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      ASSET: ${{ needs.validate.outputs.asset }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+      - name: Prepare release notes from the tagged changelog
+        run: |
+          node .github/scripts/prepare-release.mjs "$RELEASE_TAG" "$RUNNER_TEMP/release"
+          test -s "$RUNNER_TEMP/release/release-notes.md"
+      - run: npm ci
+      - name: Build the tagged extension
+        run: npm run package -- --out "$RUNNER_TEMP/release/$ASSET"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-vsix
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [validate, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.validate.outputs.version }}
+      TAG_COMMIT: ${{ needs.validate.outputs.commit }}
+      ASSET: ${{ needs.validate.outputs.asset }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-vsix
+      - name: Create GitHub Release and attach VSIX
+        shell: bash
+        run: |
+          tag_object="$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --jq '.object')"
+          while [[ "$(jq -r '.type' <<< "$tag_object")" == tag ]]; do
+            object_sha="$(jq -r '.sha' <<< "$tag_object")"
+            tag_object="$(gh api "repos/$GH_REPO/git/tags/$object_sha" --jq '.object')"
+          done
+          if [[ "$(jq -r '.type' <<< "$tag_object")" != commit || "$(jq -r '.sha' <<< "$tag_object")" != "$TAG_COMMIT" ]]; then
+            echo "Tag changed after validation; refusing to publish a mismatched build." >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" --json assets > release.json; then
+            if jq -e --arg name "$ASSET" '.assets | any(.name == $name)' release.json > /dev/null; then
+              echo "Release already contains $ASSET; leaving the published asset unchanged."
+            else
+              gh release upload "$RELEASE_TAG" "$ASSET"
+            fi
+          else
+            gh release create "$RELEASE_TAG" "$ASSET" --verify-tag \
+              --title "TCL Syntax $VERSION" --notes-file release-notes.md
+          fi

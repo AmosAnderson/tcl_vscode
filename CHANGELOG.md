@@ -4,7 +4,32 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-05
+
+### Added
+- GitHub Actions release workflow: version tags reachable from `main` run the three-platform checks, package the tagged VSIX, and attach it to a GitHub Release with changelog notes.
+- Shared parsed language analysis, variable definitions, procedure signatures with defaults, static imports/namespace paths, TclOO/lambda scopes, and class/method rename.
+- Procedure-reference and selected-test Run/Debug CodeLens, with settings and index exclusions.
+- Native Test Explorer Coverage using the same selection as Run/Debug, detailed source coverage, and cancellation of owned processes/sessions.
+- Authenticated debugger attach over loopback or SSH forwarding, remote/local source maps, and ownership-aware detach.
+- Opt-in launch debugging for new Tcl Thread workers, independent inspection/stepping, and worker source mapping.
+- Native Tcl task schema/activation/problem matching; folder-aware interpreter and run args/cwd/env configuration.
+- Package catalogs and completion, native Tcl dependency compatibility/conflict/update checks, and verified local directory/tar/tgz installation.
+- Parameterized project/package scaffolds, rule severity controls, and targeted lint suppressions.
+- Standalone test runner, focused suite filtering, and Linux/macOS/Windows extension-host CI.
+
+### Improved
+- Development uses TypeScript 7 and Oxlint; VS Code 1.136.0 or newer is required.
+- User, configuration, architecture, and contributor documentation reflects the 0.8.0 feature set and tested limits.
+- Range formatting retains executable context, literal bytes, indentation, and newline style; list-form switch bodies receive structured formatting.
+- Variable and namespace source edits reject ambiguous transformations and preserve evaluation count, scope, literal values, and adjacent commands.
+- Debugger stacks, scopes, watches, scalar/array edits, and stale-handle errors follow the selected frame/thread.
+- Diagnostics cancel/debounce obsolete interpreter checks while publishing structural checks immediately; lint uses parsed command spans.
+- Concurrent coverage requests keep independent results. REPL startup coalesces requests and recovers after terminal closure or context changes.
+
 ### Fixed
+- Tcl editors support native gutter/F9 breakpoints. Debugger stops report their actual reason and avoid duplicate stops for a whole-value command substitution followed by its scalar assignment.
+- Test and coverage output hides internal runner records; selected test debugging avoids misleading temporary-runner workspace warnings. Coverage status replaces stale clear messages.
 - Diagnostics check source without executing document code.
 - Formatting preserves literal values, comments, numeric exponents, and quoted expression operands; malformed source is left unchanged.
 - Renames use exact symbol ranges and scope, preserving unrelated variables and literal data.
@@ -255,5 +280,4 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 
 ---
 
-**Known Limitations:**
-- Formatter handles most cases; complex nested structures, continuation lines, and multi-line `expr` are supported as of 0.7.0
+Current supported scope and limitations are documented in [README.md](README.md), the [user guide](docs/USER_GUIDE.md), and the [debugging guide](docs/DEBUGGING.md).

@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
+import { createNamespaceExtractionEdit } from './namespaceEdits';
+import { procedureDeclarations } from '../analysis/procedures';
 
 export class TclNamespaceExtractProvider implements vscode.CodeActionProvider {
 
     static readonly providedCodeActionKinds = [vscode.CodeActionKind.RefactorExtract];
 
-    private static readonly procPattern = /^\s*proc\s+(\S+)\s+\{[^}]*\}\s*\{/gm;
+    public createExtractionEdit = createNamespaceExtractionEdit;
 
     public provideCodeActions(
         document: vscode.TextDocument,
@@ -74,15 +76,7 @@ export class TclNamespaceExtractProvider implements vscode.CodeActionProvider {
         }
 
         try {
-            const namespaceBlock = this.buildNamespaceBlock(namespaceName.trim(), selectedText);
-            const edit = new vscode.WorkspaceEdit();
-            const uri = document.uri;
-
-            // Replace selection with the namespace block
-            edit.replace(uri, selection, namespaceBlock);
-
-            // Update call sites outside the selection
-            this.updateCallSites(edit, document, selection, procNames, namespaceName.trim());
+            const edit = await this.createExtractionEdit(document, selection, namespaceName.trim());
 
             await vscode.workspace.applyEdit(edit);
             vscode.window.showInformationMessage(
@@ -93,67 +87,8 @@ export class TclNamespaceExtractProvider implements vscode.CodeActionProvider {
         }
     }
 
-    private containsProc(text: string): boolean {
-        return /^\s*proc\s+\S+\s+\{/m.test(text);
-    }
-
-    private findProcNames(text: string): string[] {
-        const names: string[] = [];
-        const pattern = /^\s*proc\s+(\S+)\s+\{/gm;
-        let match;
-        while ((match = pattern.exec(text)) !== null) {
-            names.push(match[1]);
-        }
-        return names;
-    }
-
-    private buildNamespaceBlock(namespaceName: string, selectedText: string): string {
-        const indented = selectedText
-            .split('\n')
-            .map(line => line.length > 0 ? `    ${line}` : line)
-            .join('\n');
-
-        return `namespace eval ::${namespaceName} {\n    namespace export *\n\n${indented}\n}`;
-    }
-
-    private updateCallSites(
-        edit: vscode.WorkspaceEdit,
-        document: vscode.TextDocument,
-        selection: vscode.Selection,
-        procNames: string[],
-        namespaceName: string
-    ): void {
-        const fullText = document.getText();
-        const selectionStart = document.offsetAt(selection.start);
-        const selectionEnd = document.offsetAt(selection.end);
-        const qualifiedPrefix = `${namespaceName}::`;
-
-        for (const procName of procNames) {
-            const escaped = procName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-            // Match bare calls: procName at word boundary (not already namespace-qualified)
-            const barePattern = new RegExp(`(?<![:\\w])${escaped}(?=\\s|\\])`, 'g');
-
-            let match;
-
-            // We need to find occurrences outside the selection range.
-            // Process bare calls first.
-            while ((match = barePattern.exec(fullText)) !== null) {
-                const matchStart = match.index;
-                const matchEnd = matchStart + procName.length;
-
-                // Skip if inside the selection
-                if (matchStart >= selectionStart && matchEnd <= selectionEnd) {
-                    continue;
-                }
-
-                const startPos = document.positionAt(matchStart);
-                const endPos = document.positionAt(matchEnd);
-                const range = new vscode.Range(startPos, endPos);
-                edit.replace(document.uri, range, `${qualifiedPrefix}${procName}`);
-            }
-        }
-    }
+    private containsProc(text: string): boolean { return procedureDeclarations(text).length > 0; }
+    private findProcNames(text: string): string[] { return procedureDeclarations(text).map(proc => proc.name); }
 
     public registerCommands(context: vscode.ExtensionContext): void {
         context.subscriptions.push(

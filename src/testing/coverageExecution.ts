@@ -4,7 +4,7 @@ export const COVERAGE_BEGIN = '__VSCODE_TCL_COVERAGE_BEGIN__';
 export const COVERAGE_END = '__VSCODE_TCL_COVERAGE_END__';
 
 /** Trace original source commands; never insert executable text into user data. */
-export function createCoverageExecutionScript(files: string[], roots: string[]): string {
+export function createCoverageExecutionScript(files: string[], roots: string[], selectedExecution?: string): string {
     const quote = (value: string) => `"${escapeTclString(value)}"`;
     return String.raw`
 namespace eval ::vscode_coverage {
@@ -16,6 +16,7 @@ namespace eval ::vscode_coverage {
 }
 set ::vscode_coverage::files [list ${files.map(quote).join(' ')}]
 set ::vscode_coverage::roots [list ${roots.map(quote).join(' ')}]
+set ::vscode_coverage::selected ${quote(selectedExecution ?? '')}
 
 proc ::vscode_coverage::allowed {file} {
     variable roots
@@ -78,6 +79,15 @@ proc ::vscode_coverage::record {command operation} {
 }
 
 proc ::vscode_coverage::run {} {
+    variable selected
+    if {$selected ne ""} {
+        if {[catch {uplevel #0 $selected} error]} {
+            puts stderr $error
+            set ::vscode_coverage::failed 1
+        }
+        if {[info exists ::vscode_test::status] && $::vscode_test::status eq "failed"} {set ::vscode_coverage::failed 1}
+        return
+    }
     variable files
     foreach file $files {
         if {[catch {uplevel #0 [list source $file]} error]} {

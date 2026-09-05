@@ -1,6 +1,6 @@
 # TCL Language Support - Configuration Reference
 
-This document provides a comprehensive reference for all configuration options available in the TCL Language Support extension.
+This reference describes the settings contributed by TCL Syntax **0.8.0**. VS Code **1.136.0** or newer is required. Launch and attach options are documented separately in [Debugging Tcl](DEBUGGING.md).
 
 ## Table of Contents
 1. [General Settings](#general-settings)
@@ -16,13 +16,14 @@ This document provides a comprehensive reference for all configuration options a
 11. [Environment Variables](#environment-variables)
 12. [Configuration Precedence](#configuration-precedence)
 13. [Performance Optimization](#performance-optimization)
+14. [Run Settings and Tasks](#run-settings-and-tasks)
 
 ## General Settings
 
 These settings control the overall behavior of the TCL extension.
 
 ### Extension Activation
-The extension automatically activates when you open a TCL file. No configuration needed.
+The extension activates for TCL files, TCL commands, debug sessions, and requests for `tcl` tasks. Task discovery is available from the standard VS Code Tasks UI; interpreter and package discovery initialize when needed.
 
 Supported file extensions:
 - `.tcl` - Standard TCL files
@@ -46,19 +47,9 @@ Control how the code formatter behaves.
 ### `tcl.format.alignBraces`
 - **Type**: `boolean`
 - **Default**: `true`
-- **Description**: Align opening and closing braces vertically
+- **Description**: Align closing braces of formatted script bodies with their enclosing command
 
-**Example:**
-```tcl
-# When true:
-if {$x > 0} {
-    puts "positive"
-}
-
-# When false:
-if {$x > 0} {
-    puts "positive"}
-```
+When `false`, a body's closing brace may remain beside the closing brace of its final nested block. This setting does not compact every script body onto one line or rewrite literal braces.
 
 ### `tcl.format.spacesAroundOperators`
 - **Type**: `boolean`
@@ -67,11 +58,13 @@ if {$x > 0} {
 
 **Example:**
 ```tcl
-# When true:
-set x [expr {$a + $b * $c}]
+# Given: set x [expr {$a+$b*$c}]
+# true adds spacing around recognized expression operators.
+# With spacesInsideBraces also at its default true:
+set x [expr { $a + $b * $c }]
 
-# When false:
-set x [expr {$a+$b*$c}]
+# false preserves existing operator spacing:
+set x [expr { $a+$b*$c }]
 ```
 
 ### `tcl.format.spacesInsideBraces`
@@ -79,7 +72,7 @@ set x [expr {$a+$b*$c}]
 - **Default**: `true`
 - **Description**: Add spaces inside braces for control-flow statements
 
-**Note**: This setting intelligently applies spacing only to control-flow keywords (`if`, `while`, `for`, `foreach`, `switch`, `elseif`, `expr`, `catch`, `try`) and procedure definitions. Regex patterns (e.g., `{\d{3}}`), list literals, and other value contexts are preserved without modification.
+**Note**: Padding applies to recognized expression arguments, procedure parameter lists, and supported inline script bodies. Multiline bodies use indentation. Regex patterns (for example `{\d{3}}`), list literals, and other value contexts remain unchanged.
 
 **Example:**
 ```tcl
@@ -104,8 +97,8 @@ if {$x > 0} {
 # When true:
 set result [ expr { $x + 1 } ]
 
-# When false:
-set result [expr {$x + 1}]
+# When false (spacesInsideBraces remains true):
+set result [expr { $x + 1 }]
 ```
 
 ## Diagnostics Settings
@@ -122,10 +115,11 @@ Control syntax checking and error detection.
 ```
 
 When enabled, provides:
-- Syntax error detection
-- Missing bracket/brace detection
-- Command validation
-- Variable usage checking
+- Parser errors for malformed commands and unclosed braces, brackets, or quotes
+- Checks inside recognized Tcl script bodies and command substitutions
+- Warnings for a missing space between a control command and its opening brace
+
+These are structural checks. The extension does not execute the document to validate command availability, argument values, or variable initialization. Style checks are configured separately under `tcl.lint.*`.
 
 ### `tcl.diagnostics.useTclsh`
 - **Type**: `boolean`
@@ -137,6 +131,10 @@ When enabled, provides:
 ```
 
 **Note**: Uses `tcl.interpreter.path` (default: `tclsh`). The interpreter reads the document as data and calls `info complete`; diagnostics never source or evaluate the document. Static syntax checks run independently.
+
+### `tcl.diagnostics.debounceMs`
+
+Delay interpreter completeness checks after editing, in milliseconds. The default is `200`; accepted values are `0`–`5000`. Static checks remain immediate, and superseded interpreter checks are cancelled.
 
 ## REPL Settings
 
@@ -155,6 +153,8 @@ Configure the TCL REPL (Read-Eval-Print Loop).
 - **Windows**: `"C:\\Tcl\\bin\\tclsh.exe"`
 - **macOS**: `"/usr/local/bin/tclsh"`
 - **Linux**: `"/usr/bin/tclsh"`
+
+An explicitly configured `tcl.repl.tclPath` overrides the project interpreter. If this setting is unset, the REPL uses `tcl.interpreter.path`; its displayed default of `tclsh` does not override a project selection. The REPL starts in the active file’s workspace folder, or its directory when no folder is open. Closing the terminal permits a fresh REPL; changing the interpreter or folder starts a REPL in that context.
 
 ## Interpreter Settings
 
@@ -186,6 +186,8 @@ The extension will:
 1. Auto-discover system interpreters
 2. Check these custom paths
 3. Allow selection via "TCL: Select Interpreter"
+
+Selection applies to the active file’s workspace folder when one is open, otherwise to user settings. Put a different `tcl.interpreter.path` in each folder’s `.vscode/settings.json` to use different interpreters in one workspace. Run commands, tests, coverage, diagnostics, packages, and the REPL resolve settings using their source file or folder; changes take effect without a reload.
 
 ## Linting Settings
 
@@ -235,6 +237,19 @@ set result [expr $a + $b]
 set result [expr {$a + $b}]
 ```
 
+### `tcl.lint.rules`
+
+Override individual rule severities; the default is `{}`. Supported rules are `expr-bracing`, `catch-no-var`, `switch-default`, `deprecated`, `line-length`, and `global-shorthand`. Values are `off`, `error`, `warning`, `information`, or `hint`.
+
+```json
+"tcl.lint.rules": {
+    "line-length": "information",
+    "catch-no-var": "off"
+}
+```
+
+For a targeted suppression, place a comment such as `# tcl-lint-disable-next-line expr-bracing` before the affected line. Use `all` to suppress all lint rules on that next line.
+
 ## Package Settings
 
 Control TCL package management features.
@@ -248,10 +263,9 @@ Control TCL package management features.
 "tcl.packages.autoDiscovery": true
 ```
 
-When enabled:
-- Scans workspace for `pkgIndex.tcl` files
-- Discovers package dependencies
-- Provides auto-completion for package commands
+Discovery is lazy and cached by workspace folder and interpreter. The catalog includes static registrations in `pkgIndex.tcl` and `Package.tcl`, discoverable `.tm` modules, and packages found through the interpreter’s search paths. Multiple packages and versions in one index are retained. Package names are offered after `package require`, `package provide`, and `package present`; catalog discovery does not supply every package’s exported commands.
+
+Setting this to `false` suppresses automatic catalog scans. Explicit **TCL: Update Package Index**, dependency refresh, and install/update commands can still request a scan. Relevant file, workspace-folder, and interpreter-setting changes invalidate the catalog.
 
 ### `tcl.packages.installDirectory`
 - **Type**: `string`
@@ -262,7 +276,23 @@ When enabled:
 "tcl.packages.installDirectory": "/usr/local/lib/tcl8.6"
 ```
 
-When set, package installation will use this directory without prompting. When empty, the user is prompted to select from writable directories on `auto_path`.
+This is the destination for manual local installation. It must be on the selected interpreter’s `auto_path`. When empty, choose from writable directories on that path. The installer preserves existing destinations and verifies that the selected interpreter can load the requested package version. A failed local verification removes only the newly created destination.
+
+When `teacup` is available, installation uses it. Otherwise, choose a local package directory or `.tar`, `.tar.gz`, or `.tgz` archive. A local source must declare the requested package/version and contain a loadable package index. The archive reader accepts regular files and directories in ustar-compatible archives; links, special entries, and PAX extensions are unsupported. Archives are limited to 64 MiB, with a 128 MiB decompressed limit. Extract an unsupported archive yourself and select its package directory.
+
+### Dependency requirements and updates
+
+Static requirements are read from Tcl commands and `Package.tcl` metadata without executing the source. For example:
+
+```tcl
+package require Example 1.0
+package require -exact ExactPackage 2.3
+package require RangePackage 1.0-2.0
+```
+
+The first example requests a Tcl-compatible version; the third requests a version at least `1.0` and below `2.0`. `Package.tcl` also supports `require` and `test-require`. The selected interpreter’s version rules determine compatibility. Requirements retain their source locations, and all requirements for the same package in a folder must be satisfied. Comments and literal data are ignored. Dynamic requirements such as `package require $name`, unsupported constraints, and conflicting requirements appear as unknown or conflicting in dependency reports.
+
+**TCL: Install Dependencies** repairs missing or incompatible dependencies. **TCL: Update Dependencies** separately looks for newer compatible versions in supported available sources; it does not mean “ignore the declared version constraint.” **TCL: Create Dependency Report** exports the required versions, installed catalog versions, statuses, and source paths as Markdown or JSON. Projects in different workspace folders are evaluated separately.
 
 ## Test Settings
 
@@ -277,16 +307,72 @@ Configure test runner behavior.
 "tcl.test.tclPath": "/usr/local/bin/tclsh8.6"
 ```
 
-### Test Discovery Patterns
+When explicitly configured, `tcl.test.tclPath` applies to Test Explorer Run, Debug, and Coverage. Otherwise all three use the source file’s `tcl.interpreter.path`.
 
-The extension automatically discovers test files matching:
-- `*.test` files
-- Files containing `test` commands
-- Files with `tcltest` package usage
+### Test discovery and profiles
+
+Discovery scans `.tcl`, `.tk`, `.tm`, and `.test` files for literal `tcltest::test` declarations, imported `test` declarations, and procedures whose final name starts with `test_`. Merely requiring `tcltest` does not create a test. Comments, literal data, and declarations inside unexecuted procedure definitions do not become test items. Use Test Explorer’s Refresh action after external changes; document edits also schedule discovery.
+
+Test Explorer provides **Run TCL Tests**, **Debug TCL Tests**, and **Coverage TCL Tests** profiles. They use the same selected cases, file expansion, and exclusions. Dirty test documents are saved before execution; cancelled saves skip that case. Debugging uses a generated selected-case runner while breakpoints remain in the original source file. Stop cancels the active process or owned debug session, and later runs remain available.
+
+Coverage appears in VS Code’s native coverage UI and the extension’s editor decorations/exports. It executes selected tests as entry points and records their loaded source files; ordinary application files are not independently launched. Completed reports remain available when an assertion fails. Dynamic code without source locations and nested procedure bodies whose declarations never execute can be absent from totals.
+
+## Run Settings and Tasks
+
+These resource-scoped settings apply to **TCL: Run with Interpreter...** and **TCL: Run with Arguments...**:
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| `tcl.run.args` | `[]` | Default argument strings |
+| `tcl.run.cwd` | `""` | Workspace folder, or script directory outside a workspace; an override can use `${workspaceFolder}` or `${fileDirname}` |
+| `tcl.run.env` | `{}` | Environment overrides for the launched process |
+| `tcl.run.rememberArgs` | `false` | Save arguments entered in Run with Arguments to the active folder’s settings, or user settings outside a workspace |
+
+```json
+{
+    "tcl.run.args": ["input with spaces.txt", "", "日本語"],
+    "tcl.run.cwd": "${workspaceFolder}",
+    "tcl.run.env": {"APP_MODE": "development"},
+    "tcl.run.rememberArgs": true
+}
+```
+
+The argument prompt accepts a JSON array of strings for exact arguments, or quoted arguments such as `one "two three" ""`. Execution uses a process task, so shell substitutions, globs, and pipelines are not expanded. A failed or cancelled file save prevents launch. REPL commands, debug configurations, and custom task definitions use their own execution options rather than these run-command defaults.
+
+### Tasks
+
+Use **Tasks: Run Task** or **Tasks: Run Build Task** without first invoking another TCL command. Discovery follows the current workspace folders and offers test/build/package actions when their required project files exist. The Install Dependencies task uses the same service as the command palette.
+
+A `.vscode/tasks.json` example:
+
+```json
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run project script",
+            "type": "tcl",
+            "script": "${workspaceFolder}/main.tcl",
+            "args": ["input with spaces.txt", ""],
+            "cwd": "${workspaceFolder}",
+            "env": {"APP_MODE": "test"},
+            "problemMatcher": "$tcl"
+        }
+    ]
+}
+```
+
+Set `interpreter` on a task to override the folder interpreter. A task must specify `script` or `command`; built-in commands are `run_tests`, `build_package`, `install_deps`, and `package`. `run_tests` executes the folder’s `run_tests.tcl`. Package archiving reads static `name`/`version` metadata and requires a system `tar` executable. Tcl source errors are linked through the `$tcl` problem matcher. Task labels, groups, presentation options, arguments, and environment values are retained during resolution.
 
 ## Editor Integration
 
 These VS Code settings enhance the TCL editing experience.
+
+### CodeLens and workspace analysis
+
+`tcl.codeLens.enable`, `tcl.codeLens.references`, and `tcl.codeLens.tests` all default to `true`. Disable the first to remove all Tcl lenses, or disable reference counts/test actions separately.
+
+`tcl.analysis.exclude` is an array of glob patterns excluded from semantic workspace analysis. Its defaults exclude `**/node_modules/**` and `**/.git/**`; custom values replace that array, so retain those entries if needed. Analysis also honors unconditional `files.exclude` entries. Exclusions, file changes, and workspace-folder changes refresh the index. Package and test discovery have their own scope.
 
 ### File Associations
 ```json
@@ -348,8 +434,8 @@ Create project-specific settings by adding `.vscode/settings.json` to your proje
     "tcl.format.alignBraces": true,
     "tcl.format.spacesAroundOperators": true,
     
-    // Disable diagnostics for performance
-    "tcl.diagnostics.enable": false,
+    // Exclude generated sources from semantic analysis
+    "tcl.analysis.exclude": ["**/node_modules/**", "**/.git/**", "**/generated/**"],
     
     // Custom file associations
     "files.associations": {
@@ -397,13 +483,7 @@ For multi-root workspaces, use `.code-workspace` file:
 
 ## Environment Variables
 
-The extension respects these environment variables:
-
-### `TCLSH`
-Path to TCL interpreter
-```bash
-export TCLSH=/usr/local/bin/tclsh8.6
-```
+Launched Tcl processes inherit the environment of VS Code. `PATH` is used to find interpreter command names; configure `tcl.interpreter.path` for an explicit executable. These Tcl environment variables can affect the interpreter’s package/library search:
 
 ### `TCLLIBPATH`
 Additional paths for TCL package discovery
@@ -419,12 +499,16 @@ export TCL_LIBRARY=/usr/local/lib/tcl8.6
 
 ## Configuration Precedence
 
-Settings are applied in this order (later overrides earlier):
-1. Default extension settings
-2. User settings (`~/.config/Code/User/settings.json`)
-3. Workspace settings (`.vscode/settings.json`)
-4. Workspace file settings (`.code-workspace`)
-5. Environment variables
+For resource-scoped settings, VS Code applies defaults, then user, workspace, and workspace-folder values. In a multi-folder workspace, shared values belong in the `.code-workspace` settings and folder overrides in each folder’s `.vscode/settings.json`.
+
+Interpreter selection uses this precedence, from highest to lowest:
+
+1. An explicit task `interpreter`, debug configuration `tclPath`, or interpreter chosen for a one-off run.
+2. An explicitly configured feature override: `tcl.repl.tclPath` for REPL or `tcl.test.tclPath` for Test Explorer Run/Debug/Coverage.
+3. The resource’s `tcl.interpreter.path`.
+4. `tclsh` resolved through `PATH`.
+
+An unset feature override does not mask the project interpreter even though its Settings UI default is `tclsh`. Inherited environment variables affect the chosen process; they do not supersede the interpreter setting.
 
 ## Performance Optimization
 
@@ -442,12 +526,13 @@ For large projects, consider these settings:
     // Disable auto-discovery in large workspaces
     "tcl.packages.autoDiscovery": false,
     
-    // Limit file watching
-    "files.watcherExclude": {
-        "**/large_data/**": true,
-        "**/node_modules/**": true,
-        "**/build/**": true
-    }
+    // Exclude generated and large directories from Tcl language analysis
+    "tcl.analysis.exclude": [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/large_data/**",
+        "**/build/**"
+    ]
 }
 ```
 
@@ -491,7 +576,7 @@ Remove TCL settings from your settings.json to use defaults.
 4. Check Output panel for extension errors
 
 ### Debug Configuration Loading
-Check the "TCL Package Manager" output channel for extension debug output. Use the VS Code "Developer: Toggle Developer Tools" command to see console logs from the extension host.
+Use **TCL Diagnostics**, **TCL Tests**, **TCL Interpreter**, or **TCL Package Manager** in the Output panel for the relevant feature. Channels appear when that feature creates them. Debug sessions write to the **Debug Console**; extension-host failures can be inspected with **Developer: Show Logs...** → **Extension Host**.
 
 ## Migration from Other Editors
 
@@ -520,3 +605,4 @@ Check the "TCL Package Manager" output channel for extension debug output. Use t
     "editor.renderWhitespace": "selection",
     "tcl.format.alignBraces": true
 }
+```
