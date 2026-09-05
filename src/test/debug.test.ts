@@ -27,6 +27,7 @@ class ServerHarness {
     stderr = '';
     private child?: ChildProcessWithoutNullStreams;
     private socket?: net.Socket;
+    private closed?: Promise<void>;
     private messages: string[] = [];
     private listeners = new Set<() => void>();
 
@@ -34,6 +35,7 @@ class ServerHarness {
         fs.writeFileSync(this.file, source);
         const server = path.join(__dirname, '..', 'debug', 'scripts', 'debugServer.tcl');
         this.child = spawn('tclsh', [server, this.file, ...args], { cwd: this.directory, env: { ...process.env, TCL_DEBUG_TOKEN: this.token, TCL_DEBUG_PORT: '0' } });
+        this.closed = new Promise(resolve => this.child!.once('close', () => resolve()));
         this.child.stdout.setEncoding('utf8');
         this.child.stderr.setEncoding('utf8');
         this.child.stdout.on('data', (data: string) => { this.stdout += data; });
@@ -107,25 +109,31 @@ class ServerHarness {
 
     async finish(): Promise<void> {
         await this.waitFor('TERMINATED');
-        if (this.child!.exitCode === null) {
-            await new Promise<void>(resolve => this.child!.once('exit', () => resolve()));
-        }
+        await this.waitForExit();
         assert.strictEqual(this.stderr, '');
         assert.deepStrictEqual(this.messages.filter(message => message.startsWith('ERROR')), []);
         assert.deepStrictEqual(this.messages.filter(message => message.startsWith('PAUSED')), []);
     }
 
     async waitForExit(): Promise<void> {
-        if (this.child!.exitCode !== null) return;
-        await new Promise<void>((resolve, reject) => {
-            const timeout = setTimeout(() => reject(new Error(`Child did not exit: ${this.stderr}`)), 5000);
-            this.child!.once('exit', () => { clearTimeout(timeout); resolve(); });
-        });
+        if (!this.closed) return;
+        let timeout: NodeJS.Timeout | undefined;
+        try {
+            await Promise.race([
+                this.closed,
+                new Promise<never>((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error(`Child did not close: ${this.stderr}`)), 5000);
+                })
+            ]);
+        } finally { clearTimeout(timeout); }
     }
 
-    dispose(): void {
+    async dispose(): Promise<void> {
         this.socket?.destroy();
-        this.child?.kill();
+        if (this.child && this.child.exitCode === null && this.child.signalCode === null) this.child.kill();
+        // Windows keeps the working directory locked until the process and its
+        // stdio handles close, even after an exit event has been delivered.
+        await this.waitForExit();
         fs.rmSync(this.directory, { recursive: true, force: true });
     }
 }
@@ -171,7 +179,7 @@ suite('Tcl debug server integration', function () {
             await server.finish();
             assert.strictEqual(server.stdout.replace(/^DEBUG_PORT:\d+\r?\n/, ''), expected);
         } finally {
-            server.dispose();
+            await server.dispose();
         }
     });
 
@@ -190,19 +198,19 @@ suite('Tcl debug server integration', function () {
             await server.start(source);
             await server.request(`BREAK ${tclWord(server.file)} 4 {} {}`, 'OK BREAK');
             await server.request('CONFIGDONE', 'OK CONFIGDONE');
-            assert.strictEqual(await server.waitFor('PAUSED '), `PAUSED ${fs.realpathSync(server.file)} 4`);
+            assert.strictEqual(await server.waitFor('PAUSED '), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 4`);
             const variables = await server.request('VARS local', 'VARS');
             assert.ok(variables.includes('localValue\x1F11'), variables);
             const stack = await server.request('STACK', 'STACK');
-            assert.ok(stack.includes(`::work\x1F${fs.realpathSync(server.file)}\x1F4`), stack);
+            assert.ok(stack.includes(`::work\x1F${fs.realpathSync.native(server.file).replace(/\\/g, '/')}\x1F4`), stack);
             assert.strictEqual(await server.request(`EVAL ${tclWord('list $localValue $::globalValue {hello world}')}`, 'EVALRESULT'), 'EVALRESULT OK 11 7 {hello world}');
             assert.strictEqual(await server.request(`EVAL ${tclWord('set text "line one\\nline two"')}`, 'EVALRESULT'), 'EVALRESULT OK line one\nline two');
             await server.request(`CLEARFILE ${tclWord(server.file)}`, 'OK CLEARFILE');
             await server.request('CONTINUE', 'OK CONTINUE');
             await server.finish();
-            assert.strictEqual(server.stdout.replace(/^DEBUG_PORT:\d+\r?\n/, ''), '11\n11\n');
+            assert.strictEqual(server.stdout.replace(/^DEBUG_PORT:\d+\r?\n/, ''), ['11', '11', ''].join(os.EOL));
         } finally {
-            server.dispose();
+            await server.dispose();
         }
     });
 
@@ -243,8 +251,8 @@ suite('Tcl debug server integration', function () {
             await server.request('CONTINUE', 'OK CONTINUE');
             await server.finish();
             assert.strictEqual(server.stdout.replace(/^DEBUG_PORT:\d+\r?\n/, ''),
-                'inner:INNER:INNER\nouter:EDITED_OUTER:ARRAY_OUTER\nglobal:EDITED_GLOBAL:ARRAY_GLOBAL\n');
-        } finally { server.dispose(); }
+                ['inner:INNER:INNER', 'outer:EDITED_OUTER:ARRAY_OUTER', 'global:EDITED_GLOBAL:ARRAY_GLOBAL', ''].join(os.EOL));
+        } finally { await server.dispose(); }
     });
 
     test('retains conditional breakpoints and interpolated logpoints', async () => {
@@ -260,7 +268,7 @@ suite('Tcl debug server integration', function () {
             await server.request('CONTINUE', 'OK CONTINUE');
             await server.finish();
             for (const i of [0, 1, 2]) assert.strictEqual(await server.waitFor(`LOG iteration ${i}`), `LOG iteration ${i}`);
-        } finally { server.dispose(); }
+        } finally { await server.dispose(); }
     });
 
     test('coalesces a numeric substitution into its assignment and preserves later loop breakpoints', async () => {
@@ -274,22 +282,22 @@ suite('Tcl debug server integration', function () {
             ].join('\n'));
             await server.request(`BREAK ${tclWord(server.file)} 5 {} {}`, 'OK BREAK');
             await server.request('CONFIGDONE', 'OK CONFIGDONE');
-            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 5`);
+            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 5`);
             assert.strictEqual(await server.waitFor('STOPREASON'), 'STOPREASON breakpoint');
             assert.strictEqual(await server.request('EVAL {list $sum $v}', 'EVALRESULT'), 'EVALRESULT OK 0 1');
             await server.request('STEP', 'OK STEP');
-            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 4`);
+            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 4`);
             assert.strictEqual(await server.waitFor('STOPREASON'), 'STOPREASON step');
             assert.strictEqual(await server.request('EVAL {list $sum $v}', 'EVALRESULT'), 'EVALRESULT OK 1 2');
             await server.request('CONTINUE', 'OK CONTINUE');
-            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 5`);
+            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 5`);
             assert.strictEqual(await server.waitFor('STOPREASON'), 'STOPREASON breakpoint');
             assert.strictEqual(await server.request('EVAL {list $sum $v}', 'EVALRESULT'), 'EVALRESULT OK 1 2');
             await server.request('CLEARALL', 'OK CLEARALL');
             await server.request('CONTINUE', 'OK CONTINUE');
             await server.finish();
             assert.match(server.stdout, /1\.5/);
-        } finally { server.dispose(); }
+        } finally { await server.dispose(); }
     });
 
     test('same-line loop visits and separate semicolon commands remain observable', async () => {
@@ -298,16 +306,16 @@ suite('Tcl debug server integration', function () {
             await server.start('set sum 0\nforeach v {1 2} {set sum [expr {$sum + $v}]; set seen $v}\nputs $sum');
             await server.request(`BREAK ${tclWord(server.file)} 2 {} {}`, 'OK BREAK');
             await server.request('CONFIGDONE', 'OK CONFIGDONE');
-            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 2`);
+            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 2`);
             for (const expected of ['0 1', '1 1', '1 2', '3 2']) {
                 await server.request('CONTINUE', 'OK CONTINUE');
-                assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 2`);
+                assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 2`);
                 assert.strictEqual(await server.request('EVAL {list $sum $v}', 'EVALRESULT'), `EVALRESULT OK ${expected}`);
             }
             await server.request('CONTINUE', 'OK CONTINUE');
             await server.finish();
             assert.match(server.stdout, /3/);
-        } finally { server.dispose(); }
+        } finally { await server.dispose(); }
     });
 
     test('step in enters a substituted procedure and step out completes its assignment', async () => {
@@ -316,20 +324,20 @@ suite('Tcl debug server integration', function () {
             await server.start('proc inner {n} {\n    set local $n\n    return $local\n}\nset result [inner 7]\nputs $result');
             await server.request(`BREAK ${tclWord(server.file)} 5 {} {}`, 'OK BREAK');
             await server.request('CONFIGDONE', 'OK CONFIGDONE');
-            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 5`);
+            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 5`);
             await server.waitFor('STOPREASON');
             await server.request('CLEARALL', 'OK CLEARALL');
             await server.request('STEPIN', 'OK STEPIN');
-            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 2`);
+            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 2`);
             assert.strictEqual(await server.waitFor('STOPREASON'), 'STOPREASON step');
             assert.strictEqual(await server.request('EVAL {set n}', 'EVALRESULT'), 'EVALRESULT OK 7');
             await server.request('STEPOUT', 'OK STEPOUT');
-            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 6`);
+            assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 6`);
             assert.strictEqual(await server.waitFor('STOPREASON'), 'STOPREASON step');
             assert.strictEqual(await server.request('EVAL {set result}', 'EVALRESULT'), 'EVALRESULT OK 7');
             await server.request('CONTINUE', 'OK CONTINUE');
             await server.finish();
-        } finally { server.dispose(); }
+        } finally { await server.dispose(); }
     });
 
     test('explicit pause and stop on entry publish their own stop reasons', async () => {
@@ -339,11 +347,11 @@ suite('Tcl debug server integration', function () {
                 await server.start('set value 1\nputs $value');
                 await server.request(command, `OK ${command}`);
                 await server.request('CONFIGDONE', 'OK CONFIGDONE');
-                assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync(server.file).replace(/\\/g, '/')} 1`);
+                assert.strictEqual(await server.waitFor('PAUSED'), `PAUSED ${fs.realpathSync.native(server.file).replace(/\\/g, '/')} 1`);
                 assert.strictEqual(await server.waitFor('STOPREASON'), `STOPREASON ${reason}`);
                 await server.request('CONTINUE', 'OK CONTINUE');
                 await server.finish();
-            } finally { server.dispose(); }
+            } finally { await server.dispose(); }
         }
     });
 
@@ -361,7 +369,7 @@ suite('Tcl debug server integration', function () {
             await server.request('CONTINUE', 'OK CONTINUE');
             await server.finish();
         } finally {
-            server.dispose();
+            await server.dispose();
         }
     });
 
@@ -374,7 +382,7 @@ suite('Tcl debug server integration', function () {
             await server.request(`CLEARFILE ${tclWord(server.file)}`, 'OK CLEARFILE');
             await server.finish();
         } finally {
-            server.dispose();
+            await server.dispose();
         }
     });
 });
@@ -383,6 +391,9 @@ interface AdapterInternals {
     _connected: boolean;
     _handshakeComplete: boolean;
     _workerDirectory?: string;
+    _tclProcess?: ChildProcessWithoutNullStreams;
+    _sourceFileMap: Record<string, string>;
+    mapSource(file: string, toRemote?: boolean): string;
     _configurationSent: boolean;
     _configDone: boolean;
     _stopOnEntry: boolean;
@@ -442,6 +453,13 @@ class AdapterHarness extends TclDebugSession {
         });
     }
 
+    async dispose(): Promise<void> {
+        const child = this.internals._tclProcess;
+        const closed = child ? new Promise<void>(resolve => child.once('close', () => resolve())) : Promise.resolve();
+        await this.request('disconnect');
+        await closed;
+    }
+
     replaceBreakpoints(file: string, lines: number[]): void {
         this.setBreakPointsRequest({ seq: 0, type: 'response', request_seq: 1, command: 'setBreakpoints', success: true, body: { breakpoints: [] } }, {
             source: { path: file },
@@ -451,6 +469,21 @@ class AdapterHarness extends TclDebugSession {
 }
 
 suite('Tcl debug adapter protocol', () => {
+    test('maps Windows drive and UNC paths without case sensitivity while preserving POSIX case', () => {
+        const adapter = new AdapterHarness().internals;
+        adapter._sourceFileMap = {
+            'C:/Temp/worker.tcl': 'C:/Users/Runner/Project/main.tcl',
+            '//Server/Share/sources': 'D:/Project',
+            '/remote/CaseSensitive': '/local/Project'
+        };
+        assert.strictEqual(adapter.mapSource('c:\\users\\runner\\project\\main.tcl', true), 'C:/Temp/worker.tcl');
+        assert.strictEqual(adapter.mapSource('c:/temp/WORKER.tcl'), 'C:/Users/Runner/Project/main.tcl');
+        assert.strictEqual(adapter.mapSource('\\\\server\\share\\sources\\main.tcl'), 'D:/Project/main.tcl');
+        assert.strictEqual(adapter.mapSource('/remote/CaseSensitive/main.tcl'), '/local/Project/main.tcl');
+        assert.strictEqual(adapter.mapSource('/remote/casesensitive/main.tcl'), '/remote/casesensitive/main.tcl');
+        assert.strictEqual(adapter.mapSource('/remote/CaseSensitiveOther/main.tcl'), '/remote/CaseSensitiveOther/main.tcl');
+    });
+
     test('reports server stop reasons and accepts legacy pause messages', async () => {
         const adapter = new AdapterHarness();
         for (const reason of ['entry', 'step', 'pause', 'breakpoint']) {
@@ -530,13 +563,13 @@ suite('Tcl debugger attach integration', function () {
             await adapter.request('setBreakpoints', { source: { path: localFile }, breakpoints: [{ line: 2 }] });
             const attached = await adapter.request('attach', {
                 port: server.port, token: server.token,
-                sourceFileMap: { [fs.realpathSync(server.directory)]: localRoot }
+                sourceFileMap: { [fs.realpathSync.native(server.directory)]: localRoot }
             });
             assert.strictEqual(attached.success, true, JSON.stringify(attached));
             await adapter.request('configurationDone');
             await adapter.waitForEvent('stopped');
             const stack = await adapter.request('stackTrace', { threadId: 1 });
-            assert.strictEqual(stack.body.stackFrames[0].source.path, localFile);
+            assert.strictEqual(stack.body.stackFrames[0].source.path, localFile.replace(/\\/g, '/'));
             const scopes = await adapter.request('scopes', { frameId: stack.body.stackFrames[0].id });
             const reference = scopes.body.scopes[1].variablesReference;
             const variables = await adapter.request('variables', { variablesReference: reference });
@@ -546,11 +579,11 @@ suite('Tcl debugger attach integration', function () {
             const stale = await adapter.request('variables', { variablesReference: reference });
             assert.strictEqual(stale.success, false);
             await server.waitForExit();
-            assert.match(server.stdout, /7\nDETACHED_FINISHED/);
+            assert.match(server.stdout, /7\r?\nDETACHED_FINISHED/);
             assert.strictEqual(server.stderr, '');
         } finally {
-            await adapter.request('disconnect');
-            server.dispose();
+            await adapter.dispose();
+            await server.dispose();
         }
     });
 
@@ -571,7 +604,7 @@ suite('Tcl debugger attach integration', function () {
         } finally {
             await bad.request('disconnect');
             await good.request('disconnect');
-            server.dispose();
+            await server.dispose();
         }
     });
 
@@ -675,7 +708,7 @@ suite('Tcl Thread debugger integration', function () {
             assert.match(output, /SECOND:1/);
             assert.match(output, /ALL_DONE/);
         } finally {
-            await adapter.request('disconnect');
+            await adapter.dispose();
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });
@@ -704,7 +737,7 @@ suite('Tcl Thread debugger integration', function () {
             const stopped = await adapter.waitForEvent('stopped');
             assert.notStrictEqual(stopped.body.threadId, 1);
             const stack = await adapter.request('stackTrace', { threadId: stopped.body.threadId });
-            assert.strictEqual(stack.body.stackFrames[0].source.path, fs.realpathSync(main));
+            assert.strictEqual(stack.body.stackFrames[0].source.path, fs.realpathSync.native(main).replace(/\\/g, '/'));
             assert.strictEqual(stack.body.stackFrames[0].line, 5);
             const evaluated = await adapter.request('evaluate', { frameId: stack.body.stackFrames[0].id, expression: 'set value' });
             assert.strictEqual(evaluated.body.result, 'INLINE');
@@ -712,7 +745,7 @@ suite('Tcl Thread debugger integration', function () {
             await adapter.waitForEvent('terminated');
             assert.strictEqual(fs.existsSync(generatedDirectory), false);
         } finally {
-            await adapter.request('disconnect');
+            await adapter.dispose();
             fs.rmSync(directory, { recursive: true, force: true });
         }
     });

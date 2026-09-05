@@ -400,7 +400,7 @@ export class TclDebugSession extends DebugSession {
     private mapSource(file: string, toRemote = false): string {
         const candidates = [toForwardSlashes(file)];
         if (toRemote) {
-            try { candidates.push(toForwardSlashes(fs.realpathSync(file))); } catch { /* A breakpoint may name a file not created yet. */ }
+            try { candidates.push(toForwardSlashes(fs.realpathSync.native(file))); } catch { /* A breakpoint may name a file not created yet. */ }
         }
         const mappings = Object.entries(this._sourceFileMap).map(([remote, local]) =>
             [toForwardSlashes(toRemote ? local : remote).replace(/\/$/, ''),
@@ -408,7 +408,13 @@ export class TclDebugSession extends DebugSession {
         mappings.sort((a, b) => b[0].length - a[0].length);
         for (const normalized of candidates) {
             for (const [from, to] of mappings) {
-                if (normalized === from || normalized.startsWith(from + '/')) return to + normalized.substring(from.length);
+                // Tcl normalizes Windows drive/case spelling, while editor paths
+                // can retain another spelling (including an 8.3 temporary path).
+                // Keep POSIX remote paths case-sensitive even on Windows hosts.
+                const windowsPath = /^(?:[a-z]:\/|\/\/)/i.test(from);
+                const candidate = windowsPath ? normalized.toLowerCase() : normalized;
+                const prefix = windowsPath ? from.toLowerCase() : from;
+                if (candidate === prefix || candidate.startsWith(prefix + '/')) return to + normalized.substring(from.length);
             }
         }
         return candidates[0];

@@ -16,7 +16,9 @@ suite('Formatter semantics', () => {
         ['quoted expression operands', 'puts [expr {"a+b" eq "a + b"}]\nputs [expr {"a  b" eq "a b"}]\n'],
         ['braced expression operands', 'puts [expr {{a+b} eq {a + b}}]\n'],
         ['array indices in expressions', 'set a(x+y) 4\nputs [expr {$a(x+y)+1}]\n'],
-        ['Unicode array variables', 'set é(x+y) 4\nputs [expr {$é(x+y)+1}]\n'],
+        // Tcl 8.6+ requires braces around non-ASCII variable names; array indices remain unrestricted.
+        ['Unicode array variables', 'set é(x+y) 4\nputs [expr {${é(x+y)}+1}]\n'],
+        ['Unicode array indices', 'set a(é+x) 6\nputs [expr {$a(é+x)+1}]\n'],
         ['nested expression substitutions', 'puts [expr {[string length {a+b}]+1}]\n'],
         ['catch script arguments', 'set x 0\ncatch {set x a+b}\nputs $x\n'],
         ['for initialization and step', 'for {set i 0} {$i<2} {incr i} {puts $i}\n'],

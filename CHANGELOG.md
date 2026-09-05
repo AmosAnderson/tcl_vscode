@@ -28,6 +28,8 @@ All notable changes to the "TCL Syntax" extension will be documented in this fil
 - Concurrent coverage requests keep independent results. REPL startup coalesces requests and recovers after terminal closure or context changes.
 
 ### Fixed
+- Tcl 9 debugger startup and coverage of unvisited branches work with the newer interpreter and safe-interpreter command visibility.
+- Windows worker breakpoints resolve short and mixed-case source paths; cross-platform regression tests handle native paths, line endings, and process cleanup.
 - Tcl editors support native gutter/F9 breakpoints. Debugger stops report their actual reason and avoid duplicate stops for a whole-value command substitution followed by its scalar assignment.
 - Test and coverage output hides internal runner records; selected test debugging avoids misleading temporary-runner workspace warnings. Coverage status replaces stale clear messages.
 - Diagnostics check source without executing document code.

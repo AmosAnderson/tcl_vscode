@@ -21,7 +21,7 @@ suite('Test output presentation', () => {
                 const result = spawnSync('tclsh', [runner], { cwd: directory, encoding: 'utf8', timeout: 5000 });
                 assert.strictEqual(result.status, fail ? 1 : 0, result.stderr);
                 assert.strictEqual(fs.readFileSync(resultFile, 'utf8').trim(), fail ? 'failed' : 'passed');
-                assert.strictEqual(result.stdout, 'REAL_OUTPUT\n');
+                assert.strictEqual(result.stdout.replace(/\r\n/g, '\n'), 'REAL_OUTPUT\n');
                 if (fail) assert.match(result.stderr, /EXPECTED_FAILURE/);
             }
         } finally { fs.rmSync(directory, { recursive: true, force: true }); }

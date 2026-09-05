@@ -4,7 +4,9 @@
 # Traces the user's original script at command boundaries to enable
 # breakpoints, stepping, variable inspection, and call stack viewing.
 
-package require Tcl 8.5
+if {[package vcompare [info patchlevel] 8.5] < 0} {
+    error "The Tcl debugger requires Tcl 8.5 or later"
+}
 
 namespace eval ::debug {
     variable sock ""

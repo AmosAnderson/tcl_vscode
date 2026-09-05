@@ -117,8 +117,31 @@ suite('Tcl test and coverage execution', () => {
         const report = covered.stdout.split(COVERAGE_BEGIN)[1].split(COVERAGE_END)[0];
         assert.match(report, /^LINE:7:1$/m);
         assert.match(report, /^LINE:9:0$/m);
+        assert.match(report, /^LINE:16:0$/m);
         assert.ok(!/^LINE:2:/m.test(report), 'Multiline literal content is not executable');
         assert.ok(!fs.existsSync(path.join(directory, 'coverage.dat')), 'No stale shared coverage file');
+    });
+
+    test('coverage compiles uncalled procedure bodies without evaluating substitutions', () => {
+        const file = write('uncalled.tcl', [
+            'proc never_called {} {',
+            '    set value [error COVERAGE_MUST_NOT_EVALUATE]',
+            '    if {$value} {',
+            '        puts UNVISITED_TRUE',
+            '    } else {',
+            '        puts UNVISITED_FALSE',
+            '    }',
+            '}',
+            'puts FINISHED'
+        ].join('\n'));
+        const covered = execute(createCoverageExecutionScript([file], [directory]));
+        assert.strictEqual(covered.status, 0, covered.stderr);
+        assert.strictEqual(covered.stdout.split(COVERAGE_BEGIN)[0].replace(/\r\n/g, '\n'), 'FINISHED\n');
+        const report = covered.stdout.split(COVERAGE_BEGIN)[1].split(COVERAGE_END)[0];
+        assert.match(report, /^LINE:2:0$/m);
+        assert.match(report, /^LINE:4:0$/m);
+        assert.match(report, /^LINE:6:0$/m);
+        assert.match(report, /^LINE:9:1$/m);
     });
 
     test('coverage runs procedure tests and handles empty input', () => {

@@ -125,7 +125,8 @@ suite('Test provider integration', function () {
             assert.strictEqual(record.ends, 1);
             assert.strictEqual(record.states.get(children(item)[0].id), 'passed', record.output);
             assert.ok(record.files.length > 0);
-            assert.ok(record.files.every(file => fs.realpathSync(file.uri.fsPath) === fs.realpathSync(item.uri!.fsPath)));
+            // Tcl expands Windows short paths; compare the native canonical names on both sides.
+            assert.ok(record.files.every(file => fs.realpathSync.native(file.uri.fsPath) === fs.realpathSync.native(item.uri!.fsPath)));
         }
     });
 
@@ -146,7 +147,7 @@ suite('Test provider integration', function () {
                         try {
                             const stack = await session.customRequest('stackTrace', { threadId: message.body.threadId });
                             const frame = stack.stackFrames[0];
-                            assert.strictEqual(fs.realpathSync(frame.source.path), fs.realpathSync(file.uri!.fsPath));
+                            assert.strictEqual(fs.realpathSync.native(frame.source.path), fs.realpathSync.native(file.uri!.fsPath));
                             assert.strictEqual(frame.line, 2);
                             stoppedAtOriginal = true;
                         } catch (error) { inspectionError = error; }

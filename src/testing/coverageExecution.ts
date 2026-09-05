@@ -35,7 +35,15 @@ proc ::vscode_coverage::seedCommands {file source firstLine} {
     variable data
     variable compiler
     # Compile in an untraced interpreter so Tcl retains branch command offsets.
-    if {[catch {interp eval $compiler [list ::tcl::unsupported::disassemble script $source]} bytecode]} { return }
+    # Tcl 9 hides unsupported commands in safe interpreters. Invoke only the
+    # compiler from the parent; user source remains data and is never evaluated.
+    if {[catch {
+        if {[lsearch -exact [interp hidden $compiler] tcl:unsupported:disassemble] >= 0} {
+            interp invokehidden $compiler tcl:unsupported:disassemble script $source
+        } else {
+            interp eval $compiler [list ::tcl::unsupported::disassemble script $source]
+        }
+    } bytecode]} { return }
     set bytes [encoding convertto utf-8 $source]
     foreach {match offset} [regexp -all -inline {\d+: pc \d+-\d+, src (\d+)-\d+} $bytecode] {
         set prefix [string range $bytes 0 [expr {$offset - 1}]]

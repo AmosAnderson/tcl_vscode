@@ -1,7 +1,15 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { resolveTclCwd, resolveTclInterpreter } from '../tools/executionContext';
+
+function assertInterpreterPath(actual: string, expected: string): void {
+    // Settings retain the launcher's path spelling, while VS Code normalizes URI drive letters.
+    // The configured executable is deliberately absent, so canonicalize only its existing folder.
+    assert.strictEqual(fs.realpathSync.native(path.dirname(actual)), fs.realpathSync.native(path.dirname(expected)));
+    assert.strictEqual(path.basename(actual), path.basename(expected));
+}
 
 suite('Workspace context and native tasks', function () {
     this.timeout(20000);
@@ -11,9 +19,9 @@ suite('Workspace context and native tasks', function () {
         for (const folder of folders) {
             const resource = vscode.Uri.joinPath(folder.uri, 'task-fixture.tcl');
             const expected = path.join(folder.uri.fsPath, 'configured-tclsh');
-            assert.strictEqual(resolveTclInterpreter(resource), expected);
-            assert.strictEqual(resolveTclInterpreter(resource, 'repl'), expected, 'Manifest defaults do not mask the general interpreter');
-            assert.strictEqual(resolveTclInterpreter(resource, 'test'), expected);
+            assertInterpreterPath(resolveTclInterpreter(resource), expected);
+            assertInterpreterPath(resolveTclInterpreter(resource, 'repl'), expected);
+            assertInterpreterPath(resolveTclInterpreter(resource, 'test'), expected);
             assert.strictEqual(resolveTclCwd(resource), folder.uri.fsPath);
         }
         const resource = folders[1].uri;
@@ -22,7 +30,7 @@ suite('Workspace context and native tasks', function () {
             await config.update('test.tclPath', 'explicit-test-interpreter', vscode.ConfigurationTarget.WorkspaceFolder);
             assert.strictEqual(resolveTclInterpreter(resource, 'test'), 'explicit-test-interpreter');
             assert.strictEqual(resolveTclInterpreter(resource, 'test', 'task-override'), 'task-override');
-            assert.strictEqual(resolveTclInterpreter(folders[0].uri, 'test'), path.join(folders[0].uri.fsPath, 'configured-tclsh'));
+            assertInterpreterPath(resolveTclInterpreter(folders[0].uri, 'test'), path.join(folders[0].uri.fsPath, 'configured-tclsh'));
         } finally { await config.update('test.tclPath', undefined, vscode.ConfigurationTarget.WorkspaceFolder); }
     });
 
@@ -36,14 +44,17 @@ suite('Workspace context and native tasks', function () {
         assert.strictEqual(task.presentationOptions.reveal, vscode.TaskRevealKind.Never);
         let timeout: ReturnType<typeof setTimeout>;
         let subscription: vscode.Disposable | undefined;
+        let execution: vscode.TaskExecution | undefined;
+        let finished = false;
+        const previousTerminals = new Set(vscode.window.terminals);
         try {
             const ended = new Promise<number | undefined>((resolve, reject) => {
                 timeout = setTimeout(() => reject(new Error('Native Tcl task did not finish')), 15000);
                 subscription = vscode.tasks.onDidEndTaskProcess(event => {
-                    if (event.execution.task.name === task.name) resolve(event.exitCode);
+                    if (event.execution.task.name === task.name) { finished = true; resolve(event.exitCode); }
                 });
             });
-            await vscode.tasks.executeTask(task);
+            execution = await vscode.tasks.executeTask(task);
             assert.strictEqual(await ended, 1);
             const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders![1].uri, 'task-fixture.tcl');
             const deadline = Date.now() + 2000;
@@ -51,6 +62,11 @@ suite('Workspace context and native tasks', function () {
                 await new Promise(resolve => setTimeout(resolve, 20));
             }
             assert.ok(vscode.languages.getDiagnostics(uri).some(item => item.range.start.line === 0), 'The $tcl matcher publishes a clickable file and line');
-        } finally { clearTimeout(timeout!); subscription?.dispose(); }
+        } finally {
+            clearTimeout(timeout!); subscription?.dispose();
+            if (!finished) execution?.terminate();
+            // Dedicated task terminals may keep the temporary folder open on Windows.
+            for (const terminal of vscode.window.terminals) if (!previousTerminals.has(terminal)) terminal.dispose();
+        }
     });
 });
