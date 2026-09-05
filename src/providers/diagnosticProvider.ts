@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
-import { countBackslashes, createTempTclPath, toForwardSlashes, computeMultilineStringLines } from '../utils/tclUtils';
+import { createTempTclPath, computeMultilineStringLines } from '../utils/tclUtils';
+import { getScriptWords, parseTclScript, TclCommand } from '../utils/tclParser';
 
 const execFileAsync = promisify(execFile);
 
@@ -29,6 +30,7 @@ export class TclDiagnosticProvider {
             return;
         }
 
+        const version = document.version;
         const diagnostics: vscode.Diagnostic[] = [];
         
         // Basic syntax validation
@@ -40,92 +42,27 @@ export class TclDiagnosticProvider {
             await this.validateWithTclsh(document, diagnostics);
         }
 
-        this.diagnosticCollection.set(document.uri, diagnostics);
+        if (document.version === version) this.diagnosticCollection.set(document.uri, diagnostics);
     }
 
     private validateBasicSyntax(document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): void {
         const text = document.getText();
-        const lines = text.split('\n');
-
-        const braceStack: number[] = [];
-        const bracketStack: number[] = [];
-        let inString = false;
-        let stringStartLine = -1;
-
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-            const line = lines[lineNum];
-
-            for (let charPos = 0; charPos < line.length; charPos++) {
-                const char = line[charPos];
-                const prevChar = charPos > 0 ? line[charPos - 1] : '';
-
-                // Handle double-quoted string literals (TCL only uses " for quoting, not ')
-                if (char === '"') {
-                    if (countBackslashes(line, charPos) % 2 === 0) {
-                        if (!inString) {
-                            stringStartLine = lineNum;
-                        }
-                        inString = !inString;
-                    }
-                    continue;
-                }
-
-                if (inString) continue;
-
-                // Handle comments
-                if (char === '#' && (charPos === 0 || /\s/.test(prevChar))) {
-                    break; // Rest of line is comment
-                }
-
-                // Track braces and brackets (skip if backslash-escaped)
-                if (char === '{' || char === '}' || char === '[' || char === ']') {
-                    if (countBackslashes(line, charPos) % 2 === 1) continue;
-                }
-
-                if (char === '{') {
-                    braceStack.push(lineNum);
-                } else if (char === '}') {
-                    if (braceStack.length === 0) {
-                        this.addDiagnostic(diagnostics, lineNum, charPos, charPos + 1,
-                            'Unmatched closing brace', vscode.DiagnosticSeverity.Error);
-                    } else {
-                        braceStack.pop();
-                    }
-                } else if (char === '[') {
-                    bracketStack.push(lineNum);
-                } else if (char === ']') {
-                    if (bracketStack.length === 0) {
-                        this.addDiagnostic(diagnostics, lineNum, charPos, charPos + 1,
-                            'Unmatched closing bracket', vscode.DiagnosticSeverity.Error);
-                    } else {
-                        bracketStack.pop();
-                    }
-                }
+        const scan = (start: number, end: number): void => {
+            const parsed = parseTclScript(text, start, end);
+            for (const error of parsed.errors) {
+                const position = document.positionAt(error.offset);
+                this.addDiagnostic(diagnostics, position.line, position.character, position.character + 1,
+                    error.message, vscode.DiagnosticSeverity.Error);
             }
-
-            // Multiline strings are valid in TCL — do NOT flag per-line
-        }
-
-        // Check for unclosed string at end of document
-        if (inString) {
-            this.addDiagnostic(diagnostics, stringStartLine, 0, lines[stringStartLine].length,
-                'Unclosed string literal', vscode.DiagnosticSeverity.Error);
-        }
-
-        // Check for unclosed braces/brackets at end of file
-        if (braceStack.length > 0) {
-            const lastBraceLine = braceStack[braceStack.length - 1];
-            this.addDiagnostic(diagnostics, lastBraceLine, 0, lines[lastBraceLine].length,
-                'Unclosed brace', vscode.DiagnosticSeverity.Error);
-        }
-
-        if (bracketStack.length > 0) {
-            const lastBracketLine = bracketStack[bracketStack.length - 1];
-            this.addDiagnostic(diagnostics, lastBracketLine, 0, lines[lastBracketLine].length,
-                'Unclosed bracket', vscode.DiagnosticSeverity.Error);
-        }
-
-        // Check for common TCL syntax issues
+            const visit = (commands: TclCommand[]): void => {
+                for (const command of commands) {
+                    for (const word of command.words) visit(word.substitutions);
+                    for (const body of getScriptWords(command)) scan(body.contentStart, body.contentEnd);
+                }
+            };
+            visit(parsed.commands);
+        };
+        scan(0, text.length);
         this.checkCommonIssues(document, diagnostics);
     }
 
@@ -195,97 +132,25 @@ export class TclDiagnosticProvider {
     }
 
     private async validateWithTclsh(document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): Promise<void> {
+        // The interpreter receives source as data. info complete performs parsing only;
+        // source/eval/substitution of document text must never be used for diagnostics.
+        const dataFile = createTempTclPath('validate');
+        const checkFile = createTempTclPath('check');
         try {
-            // Check if tclsh is available
-            const tclshPath = await this.findTclsh();
-            if (!tclshPath) {
-                return; // tclsh not available, skip advanced validation
-            }
-
-            // Create temporary file for validation (cross-platform)
-            const tempFile = createTempTclPath('validate');
-            fs.writeFileSync(tempFile, document.getText(), 'utf8');
-
-            try {
-                // Run tclsh with syntax-only check wrapper
-                // TCL doesn't have a -n flag like other shells, so we use a minimal wrapper
-                // Use brace-quoting to prevent TCL substitution in file paths
-                const checkScript = `
-if {[catch {source {${toForwardSlashes(tempFile)}}} errorMsg]} {
-    puts stderr $errorMsg
-    exit 1
-}
-exit 0
-`;
-                const checkFile = createTempTclPath('check');
-                fs.writeFileSync(checkFile, checkScript, 'utf8');
-
-                try {
-                    await execFileAsync(tclshPath, [checkFile]);
-                } catch (error) {
-                    const execError = error as { stderr?: string };
-                    // tclsh returns non-zero exit code for syntax errors
-                    if (execError.stderr) {
-                        this.parseTclshErrors(execError.stderr, document, diagnostics);
-                    }
-                } finally {
-                    // Clean up check script
-                    try {
-                        fs.unlinkSync(checkFile);
-                    } catch {
-                        // Ignore cleanup errors
-                    }
-                }
-            } finally {
-                // Clean up temp file
-                try {
-                    fs.unlinkSync(tempFile);
-                } catch {
-                    // Ignore cleanup errors
-                }
+            fs.writeFileSync(dataFile, document.getText(), 'utf8');
+            fs.writeFileSync(checkFile, 'set channel [open [lindex $argv 0] r]\nset script [read $channel]\nclose $channel\nputs [info complete $script]\n', 'utf8');
+            const configured = vscode.workspace.getConfiguration('tcl').get<string>('interpreter.path', 'tclsh');
+            const { stdout } = await execFileAsync(configured, [checkFile, dataFile], { timeout: 2000, maxBuffer: 1024 });
+            if (stdout.trim() === '0' && !diagnostics.some(d => d.severity === vscode.DiagnosticSeverity.Error)) {
+                const position = document.positionAt(document.getText().length);
+                this.addDiagnostic(diagnostics, position.line, position.character, position.character,
+                    'Incomplete Tcl command', vscode.DiagnosticSeverity.Error);
             }
         } catch (error) {
-            // Log error but don't fail validation
-            this.outputChannel.appendLine(`TCL validation error: ${error}`);
-        }
-    }
-
-    private async findTclsh(): Promise<string | null> {
-        const candidates = process.platform === 'win32'
-            ? ['tclsh.exe', 'tclsh86.exe', 'tclsh85.exe', 'C:/Tcl/bin/tclsh.exe', 'C:/Tcl/bin/tclsh86.exe']
-            : ['tclsh', 'tclsh8.7', 'tclsh8.6', 'tclsh8.5', '/usr/bin/tclsh', '/usr/local/bin/tclsh'];
-
-        const probeFile = createTempTclPath('probe');
-        fs.writeFileSync(probeFile, 'puts $tcl_version', 'utf8');
-        try {
-            for (const candidate of candidates) {
-                try {
-                    await execFileAsync(candidate, [probeFile]);
-                    return candidate;
-                } catch {
-                    continue;
-                }
-            }
-            return null;
+            this.outputChannel.appendLine(`TCL completeness check unavailable: ${error}`);
         } finally {
-            try { fs.unlinkSync(probeFile); } catch { /* ignore */ }
-        }
-    }
-
-    private parseTclshErrors(stderr: string, document: vscode.TextDocument, diagnostics: vscode.Diagnostic[]): void {
-        const lines = stderr.split('\n');
-
-        for (const line of lines) {
-            // Parse tclsh error format: "line X: error message"
-            const match = line.match(/line (\d+): (.+)/);
-            if (match) {
-                const lineNum = parseInt(match[1]) - 1; // Convert to 0-based
-                const message = match[2];
-                const lineLength = lineNum < document.lineCount
-                    ? document.lineAt(lineNum).text.length
-                    : 0;
-                this.addDiagnostic(diagnostics, lineNum, 0, lineLength,
-                    message, vscode.DiagnosticSeverity.Error);
+            for (const file of [dataFile, checkFile]) {
+                try { fs.unlinkSync(file); } catch { /* best-effort cleanup */ }
             }
         }
     }

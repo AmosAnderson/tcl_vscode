@@ -1,7 +1,7 @@
 #!/usr/bin/env tclsh
 # TCL Debug Server
 # Communicates with the VS Code debug adapter over a TCP socket.
-# Instruments the user's script with line-level checkpoints to enable
+# Traces the user's original script at command boundaries to enable
 # breakpoints, stepping, variable inspection, and call stack viewing.
 
 package require Tcl 8.5
@@ -18,6 +18,11 @@ namespace eval ::debug {
     variable currentLine 0
     variable running 1
     variable scriptFile ""
+    variable inspectionLevel 0
+    variable commandQueue {}
+    variable commandReady 0
+    variable scriptStack {}
+    variable serverFile [file normalize [info script]]
 
     array set breakpoints {}
     array set breakpointConditions {}
@@ -26,14 +31,14 @@ namespace eval ::debug {
 
 # ---- Socket Communication ----
 
-proc ::debug::startServer {scriptFile} {
+proc ::debug::startServer {targetFile} {
     variable sock
-    variable ::debug::scriptFile
+    variable scriptFile
 
-    set ::debug::scriptFile $scriptFile
+    set scriptFile [file normalize $targetFile]
 
     # Open server socket on random port
-    set serverSock [socket -server ::debug::acceptConnection 0]
+    set serverSock [socket -server ::debug::acceptConnection -myaddr 127.0.0.1 0]
     set port [lindex [fconfigure $serverSock -sockname] 2]
 
     # Print port for the adapter to connect
@@ -60,24 +65,34 @@ proc ::debug::acceptConnection {channel addr port} {
 
 proc ::debug::readCommand {} {
     variable sock
-    variable paused
-
-    if {[eof $sock]} {
-        ::debug::shutdown
-        return
+    if {[gets $sock line] < 0} {
+        if {[eof $sock]} {::debug::shutdown}
+        return 0
     }
+    if {$line eq ""} {return 1}
+    # Event callbacks run at global scope. Queue commands so inspection is
+    # executed by the paused checkpoint, where the user's call frames exist.
+    lappend ::debug::commandQueue $line
+    incr ::debug::commandReady
+    return 1
+}
 
-    gets $sock line
-    if {$line eq ""} return
-
-    ::debug::handleCommand $line
+proc ::debug::nextCommand {} {
+    while {[llength $::debug::commandQueue] == 0} {
+        vwait ::debug::commandReady
+    }
+    set command [lindex $::debug::commandQueue 0]
+    set ::debug::commandQueue [lrange $::debug::commandQueue 1 end]
+    return $command
 }
 
 proc ::debug::sendResponse {msg} {
     variable sock
     if {$sock ne ""} {
         catch {
-            puts $sock $msg
+            # Hex framing preserves embedded newlines in values and errors.
+            binary scan [encoding convertto utf-8 $msg] H* encoded
+            puts $sock "DATA $encoded"
             flush $sock
         }
     }
@@ -90,7 +105,7 @@ proc ::debug::handleCommand {line} {
 
     switch $cmd {
         "BREAK" {
-            set file [lindex $line 1]
+            set file [file normalize [lindex $line 1]]
             set lineNum [lindex $line 2]
             set condition [lindex $line 3]
             set logMessage [lindex $line 4]
@@ -100,12 +115,24 @@ proc ::debug::handleCommand {line} {
             ::debug::sendResponse "OK BREAK $file $lineNum"
         }
         "CLEAR" {
-            set file [lindex $line 1]
+            set file [file normalize [lindex $line 1]]
             set lineNum [lindex $line 2]
             catch {unset ::debug::breakpoints($file,$lineNum)}
             catch {unset ::debug::breakpointConditions($file,$lineNum)}
             catch {unset ::debug::breakpointLogMessages($file,$lineNum)}
             ::debug::sendResponse "OK CLEAR $file $lineNum"
+        }
+        "CLEARFILE" {
+            set file [file normalize [lindex $line 1]]
+            foreach key [array names ::debug::breakpoints] {
+                set separator [string last , $key]
+                if {[string range $key 0 [expr {$separator - 1}]] eq $file} {
+                    unset ::debug::breakpoints($key)
+                    catch {unset ::debug::breakpointConditions($key)}
+                    catch {unset ::debug::breakpointLogMessages($key)}
+                }
+            }
+            ::debug::sendResponse "OK CLEARFILE"
         }
         "CLEARALL" {
             array unset ::debug::breakpoints
@@ -143,7 +170,7 @@ proc ::debug::handleCommand {line} {
             ::debug::sendVariables $scope
         }
         "EVAL" {
-            set expr [join [lrange $line 1 end] " "]
+            set expr [lindex $line 1]
             ::debug::evalExpression $expr
         }
         "STACK" {
@@ -156,10 +183,11 @@ proc ::debug::handleCommand {line} {
         }
         "SETVAR" {
             set name [lindex $line 1]
-            set value [join [lrange $line 2 end] " "]
+            set value [lindex $line 2]
             ::debug::setVariable $name $value
         }
         "CONFIGDONE" {
+            ::debug::sendResponse "OK CONFIGDONE"
             set ::debug::configDone 1
         }
         "DISCONNECT" {
@@ -174,71 +202,40 @@ proc ::debug::handleCommand {line} {
 proc ::debug::waitForCommand {expected} {
     variable sock
 
-    # Use vwait-based approach to wait for a specific command
     set ::debug::configDone 0
-    vwait ::debug::configDone
-}
-
-# ---- Script Instrumentation ----
-
-proc ::debug::instrumentScript {filePath} {
-    set fd [open $filePath r]
-    set content [read $fd]
-    close $fd
-
-    set lines [split $content \n]
-    set output {}
-    set lineNum 0
-    set continuation 0
-
-    foreach line $lines {
-        incr lineNum
-        set trimmed [string trim $line]
-
-        # Pass through empty lines, comments, and continuation lines
-        if {$continuation} {
-            lappend output $line
-            # Check if continuation ends (no trailing backslash)
-            if {![string match {*\\} [string trimright $line]]} {
-                set continuation 0
-            }
-            continue
-        }
-
-        if {$trimmed eq "" || [string index $trimmed 0] eq "#"} {
-            lappend output $line
-            continue
-        }
-
-        # Check for line continuation
-        if {[string match {*\\} [string trimright $line]]} {
-            set continuation 1
-            # Insert checkpoint before the first line of the continuation
-            set indent [::debug::getIndent $line]
-            lappend output "${indent}::debug::checkpoint [list $filePath] $lineNum"
-            lappend output $line
-            continue
-        }
-
-        # Check for lines that are just closing braces — don't instrument
-        if {[regexp {^\s*\}\s*$} $line]} {
-            lappend output $line
-            continue
-        }
-
-        # Check for proc/namespace/if/while/for/foreach/switch headers
-        # These control structures should have the checkpoint before them
-        set indent [::debug::getIndent $line]
-        lappend output "${indent}::debug::checkpoint [list $filePath] $lineNum"
-        lappend output $line
+    while {!$::debug::configDone} {
+        ::debug::handleCommand [::debug::nextCommand]
     }
-
-    return [join $output \n]
 }
 
-proc ::debug::getIndent {line} {
-    regexp {^(\s*)} $line -> indent
-    return $indent
+# ---- Execution Tracing ----
+
+proc ::debug::traceCommand {command operation} {
+    # This must run directly in the callback: -1 is the synthetic trace call,
+    # and -2 is the original command, with Tcl's source-file/line metadata.
+    set frame [info frame -2]
+    if {![dict exists $frame file] || ![dict exists $frame line]} return
+    set file [file normalize [dict get $frame file]]
+    if {$file eq $::debug::serverFile} return
+
+    set ::debug::inspectionLevel [expr {[info level] - 1}]
+    set ::debug::scriptStack {}
+    set seenLevels {}
+    # Snapshot real source frames before entering the debugger's event loop.
+    set lastFrame [expr {[info frame] - 2}]
+    for {set i $lastFrame} {$i > 0} {incr i -1} {
+        set caller [info frame $i]
+        if {![dict exists $caller file] || ![dict exists $caller level]} continue
+        set callerFile [file normalize [dict get $caller file]]
+        if {$callerFile eq $::debug::serverFile} continue
+        set level [dict get $caller level]
+        if {$level in $seenLevels} continue
+        lappend seenLevels $level
+        set name "<main>"
+        if {[dict exists $caller proc]} {set name [dict get $caller proc]}
+        lappend ::debug::scriptStack [list $name $callerFile [dict get $caller line]]
+    }
+    ::debug::checkpoint $file [dict get $frame line]
 }
 
 # ---- Execution Control ----
@@ -255,6 +252,13 @@ proc ::debug::checkpoint {file line} {
 
     set currentFile $file
     set currentLine $line
+
+    # Observe breakpoint edits even in scripts that never enter an event loop.
+    # The socket is nonblocking; this does not execute unrelated Tcl events.
+    while {[::debug::readCommand]} {}
+    while {[llength $::debug::commandQueue] > 0} {
+        ::debug::handleCommand [::debug::nextCommand]
+    }
 
     set shouldPause 0
 
@@ -309,8 +313,10 @@ proc ::debug::checkpoint {file line} {
         set paused 1
         ::debug::sendResponse "PAUSED $file $line"
 
-        # Enter event loop to process commands while paused
-        vwait ::debug::paused
+        # Return from the event loop before inspecting the user's call frame.
+        while {$paused} {
+            ::debug::handleCommand [::debug::nextCommand]
+        }
     }
 }
 
@@ -319,7 +325,7 @@ proc ::debug::interpolateLogMessage {msg level} {
     # Uses a regex to find all {...} groups and substitutes each one.
     set result ""
     set remaining $msg
-    while {[regexp -indices {\{([^}]*)\}} $remaining match exprRange]} {
+    while {[regexp -indices {\{([^\}]*)\}} $remaining match exprRange]} {
         set matchStart [lindex $match 0]
         set matchEnd [lindex $match 1]
         set exprStart [lindex $exprRange 0]
@@ -343,10 +349,7 @@ proc ::debug::interpolateLogMessage {msg level} {
 }
 
 proc ::debug::getCurrentLevel {} {
-    # info level gives the stack depth
-    # Subtract 2 to account for checkpoint and getCurrentLevel calls
-    set level [info level]
-    return [expr {$level - 2}]
+    return $::debug::inspectionLevel
 }
 
 proc ::debug::runScript {} {
@@ -354,54 +357,21 @@ proc ::debug::runScript {} {
     variable currentFile
 
     set currentFile $scriptFile
+    # Tracing source observes actual commands, including procedure and sourced
+    # file bodies, without rewriting Tcl literal words or structured lists.
+    trace add execution ::source enterstep ::debug::traceCommand
+    set code [catch {uplevel #0 [list source $scriptFile]} result options]
+    trace remove execution ::source enterstep ::debug::traceCommand
 
-    # Instrument the script
-    set instrumented [::debug::instrumentScript $scriptFile]
-
-    # Write instrumented script to temp file
-    set tempFile [file join [::debug::tempDir] "tcl_debug_instrumented_[pid].tcl"]
-    set fd [open $tempFile w]
-    puts $fd $instrumented
-    close $fd
-
-    # Execute the instrumented script
-    set errorOccurred 0
-    set errorMsg ""
-    set errorInfo ""
-
-    if {[catch {source $tempFile} result]} {
-        set errorOccurred 1
-        set errorMsg $result
-        if {[info exists ::errorInfo]} {
-            set errorInfo $::errorInfo
-        }
-    }
-
-    # Clean up temp file
-    catch {file delete $tempFile}
-
-    if {$errorOccurred} {
-        ::debug::sendResponse "ERROR $errorMsg"
-        if {$errorInfo ne ""} {
-            ::debug::sendResponse "ERRORINFO $errorInfo"
+    if {$code != 0} {
+        ::debug::sendResponse "ERROR $result"
+        if {[dict exists $options -errorinfo]} {
+            ::debug::sendResponse "ERRORINFO [dict get $options -errorinfo]"
         }
     }
 
     ::debug::sendResponse "TERMINATED"
     ::debug::shutdown
-}
-
-proc ::debug::tempDir {} {
-    # Try Tcl 8.6.13+ built-in
-    catch {return [file tempdir]}
-    if {[info exists ::env(TMPDIR)]} {
-        return $::env(TMPDIR)
-    } elseif {[info exists ::env(TMP)]} {
-        return $::env(TMP)
-    } elseif {[info exists ::env(TEMP)]} {
-        return $::env(TEMP)
-    }
-    return "/tmp"
 }
 
 # ---- Variable Inspection ----
@@ -497,18 +467,7 @@ proc ::debug::sendArrayElements {name scope} {
 }
 
 proc ::debug::getInspectionLevel {} {
-    # Find the user code level by looking for checkpoint in the stack
-    set levels [info level]
-    for {set i $levels} {$i >= 0} {incr i -1} {
-        if {[catch {set frame [info level $i]} err]} continue
-        set cmd [lindex $frame 0]
-        if {$cmd eq "::debug::checkpoint"} {
-            # The frame below checkpoint is the user code
-            return [expr {$i - 1}]
-        }
-    }
-    # Default: return global level
-    return 0
+    return $::debug::inspectionLevel
 }
 
 proc ::debug::setVariable {name value} {
@@ -523,51 +482,14 @@ proc ::debug::setVariable {name value} {
 # ---- Call Stack ----
 
 proc ::debug::sendCallStack {} {
-    variable currentFile
-    variable currentLine
-
-    set stack {}
-
-    # Build stack from info level
-    set levels [info level]
-
-    # Find where user code starts
-    set userLevel [::debug::getInspectionLevel]
-
-    for {set i $userLevel} {$i >= 0} {incr i -1} {
-        if {[catch {set frame [info level $i]}]} continue
-        set procName [lindex $frame 0]
-
-        # Skip debug namespace procs
-        if {[string match "::debug::*" $procName]} continue
-
-        set file $currentFile
-        set line $currentLine
-
-        # Try to get file/line info from info frame (8.5+)
-        if {![catch {set frameInfo [info frame $i]}]} {
-            if {[dict exists $frameInfo file]} {
-                set file [dict get $frameInfo file]
-            }
-            if {[dict exists $frameInfo line]} {
-                set line [dict get $frameInfo line]
-            }
-        }
-
-        lappend stack [list $procName $file $line]
-    }
-
-    # Always include at least the current position
+    set stack $::debug::scriptStack
     if {[llength $stack] == 0} {
-        lappend stack [list "<main>" $currentFile $currentLine]
+        lappend stack [list "<main>" $::debug::currentFile $::debug::currentLine]
     }
-
-    # Format response
     set response "STACK"
     foreach frame $stack {
         append response "\x1E[lindex $frame 0]\x1F[lindex $frame 1]\x1F[lindex $frame 2]"
     }
-
     ::debug::sendResponse $response
 }
 
@@ -611,6 +533,8 @@ if {![file exists $scriptFile]} {
     exit 1
 }
 
+# Match normal tclsh invocation, including scripts that inspect argv0.
+set argv0 [file normalize $scriptFile]
 # Pass remaining args to the user script
 set argv [lrange $argv 1 end]
 set argc [llength $argv]

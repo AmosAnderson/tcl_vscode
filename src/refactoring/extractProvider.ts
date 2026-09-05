@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
-import { escapeRegex, findMatchingBrace } from '../utils/tclUtils';
+import { escapeTclString } from '../utils/tclUtils';
+import { DocumentSymbolTable } from '../analysis/symbolTable';
+import { commandContexts, procedureDeclarations, resolveProcedureName } from '../analysis/procedures';
+import { isStaticWord, parseTclScript, walkTclCommands } from '../utils/tclParser';
 
 export class TclExtractProvider implements vscode.CodeActionProvider {
     
@@ -108,23 +111,7 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
         }
 
         try {
-            // Analyze the selected code to determine parameters
-            const analysis = this.analyzeCodeForExtraction(document, selectedText, range);
-            
-            // Generate the procedure
-            const procedureCode = this.generateProcedure(procedureName, analysis.parameters, selectedText, analysis.returnValue);
-            
-            // Create workspace edit
-            const edit = new vscode.WorkspaceEdit();
-            
-            // Insert the procedure at the beginning of the file (or before current procedure)
-            const insertPosition = this.findInsertPosition(document, range);
-            edit.insert(uri, insertPosition, procedureCode + '\n\n');
-            
-            // Replace selected code with procedure call
-            const procedureCall = this.generateProcedureCall(procedureName, analysis.parameters, analysis.returnValue);
-            edit.replace(uri, range, procedureCall);
-            
+            const edit = this.createProcedureExtractionEdit(document, range, procedureName.trim());
             // Apply the edit
             await vscode.workspace.applyEdit(edit);
             
@@ -133,6 +120,18 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to extract procedure: ${error}`);
         }
+    }
+
+    public createProcedureExtractionEdit(document: vscode.TextDocument, range: vscode.Selection, name: string): vscode.WorkspaceEdit {
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) throw new Error('Invalid procedure name');
+        if (procedureDeclarations(document.getText()).some(declaration => declaration.name === name)) throw new Error('A procedure with this name already exists');
+        const selectedText = document.getText(range);
+        const analysis = this.analyzeCodeForExtraction(document, selectedText, range);
+        const procedure = this.generateProcedure(name, analysis.parameters, selectedText, analysis.returnValue);
+        const edit = new vscode.WorkspaceEdit();
+        edit.insert(document.uri, this.findInsertPosition(document, range), procedure + '\n\n');
+        edit.replace(document.uri, range, this.generateProcedureCall(name, analysis.parameters, analysis.returnValue));
+        return edit;
     }
 
     public async extractVariable(uri: vscode.Uri, range: vscode.Selection): Promise<void> {
@@ -258,401 +257,94 @@ export class TclExtractProvider implements vscode.CodeActionProvider {
 
     public async inlineProcedure(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            vscode.window.showErrorMessage('No active editor');
-            return;
-        }
-
-        const document = editor.document;
-        const position = editor.selection.active;
-        const wordRange = document.getWordRangeAtPosition(position);
-
-        if (!wordRange) {
-            vscode.window.showErrorMessage('No procedure name under cursor');
-            return;
-        }
-
-        const procName = document.getText(wordRange);
-
-        // Reject built-in commands
-        if (TclExtractProvider.builtinNames.has(procName)) {
-            vscode.window.showInformationMessage(`'${procName}' is a built-in TCL command and cannot be inlined`);
-            return;
-        }
-
+        if (!editor) { vscode.window.showErrorMessage('No active editor'); return; }
         try {
-            // Find the procedure definition
-            const procDef = this.findProcDefinition(document, procName)
-                ?? await this.findProcDefinitionInWorkspace(procName, document.uri);
-
-            if (!procDef) {
-                vscode.window.showErrorMessage(`Cannot find definition for procedure '${procName}'`);
-                return;
-            }
-
-            // Safety check: reject procs that use upvar/uplevel/global
-            const unsafePattern = /\b(upvar|uplevel|global)\b/;
-            if (unsafePattern.test(procDef.body)) {
-                vscode.window.showWarningMessage(
-                    `Procedure '${procName}' uses upvar, uplevel, or global and cannot be safely inlined`
-                );
-                return;
-            }
-
-            // Parse the call site to extract actual arguments
-            const callLine = document.lineAt(position.line).text;
-            const callArgs = this.parseCallSiteArguments(callLine, procName);
-
-            if (callArgs === null) {
-                vscode.window.showErrorMessage(`Cannot parse arguments at the call site for '${procName}'`);
-                return;
-            }
-
-            if (callArgs.length !== procDef.params.length) {
-                vscode.window.showErrorMessage(
-                    `Argument count mismatch: '${procName}' expects ${procDef.params.length} argument(s) but got ${callArgs.length}`
-                );
-                return;
-            }
-
-            // Substitute parameters in the body
-            let inlinedBody = procDef.body;
-            for (let i = 0; i < procDef.params.length; i++) {
-                const paramName = procDef.params[i];
-                const argValue = callArgs[i];
-                const paramPattern = new RegExp(`\\$${escapeRegex(paramName)}\\b`, 'g');
-                inlinedBody = inlinedBody.replace(paramPattern, argValue);
-            }
-
-            // Determine the full call range on the line
-            const callRange = this.findCallRange(document, position.line, procName);
-            if (!callRange) {
-                vscode.window.showErrorMessage(`Cannot determine the call expression for '${procName}'`);
-                return;
-            }
-
-            // Check if the call is in a set assignment: set x [procName args]
-            const setAssignMatch = callLine.match(
-                new RegExp(`^(\\s*)set\\s+(\\S+)\\s+\\[${escapeRegex(procName)}\\b[^\\]]*\\]\\s*$`)
-            );
-
-            const edit = new vscode.WorkspaceEdit();
-            const lineRange = new vscode.Range(
-                position.line, 0,
-                position.line, callLine.length
-            );
-
-            if (setAssignMatch) {
-                const indent = setAssignMatch[1];
-                const targetVar = setAssignMatch[2];
-                // Replace "return <value>" with "set <targetVar> <value>"
-                const transformed = this.transformReturnForAssignment(inlinedBody, targetVar, indent);
-                edit.replace(document.uri, lineRange, transformed);
-            } else {
-                // Simple inline: replace the call range with the body
-                const indent = callLine.match(/^(\s*)/)?.[1] ?? '';
-                const transformed = this.indentBody(this.stripTrailingReturn(inlinedBody), indent);
-                edit.replace(document.uri, callRange, transformed);
-            }
-
+            const edit = await this.provideInlineEdits(editor.document, editor.selection.active);
             await vscode.workspace.applyEdit(edit);
-            vscode.window.showInformationMessage(`Procedure '${procName}' inlined successfully`);
-
+            vscode.window.showInformationMessage('Procedure inlined successfully');
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to inline procedure: ${error}`);
         }
     }
 
-    private findProcDefinition(
-        document: vscode.TextDocument, procName: string
-    ): { params: string[]; body: string } | null {
+    public async provideInlineEdits(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.WorkspaceEdit> {
         const text = document.getText();
-        return this.extractProcParts(text, procName);
-    }
-
-    private async findProcDefinitionInWorkspace(
-        procName: string, excludeUri: vscode.Uri
-    ): Promise<{ params: string[]; body: string } | null> {
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm}', '**/node_modules/**');
-
-        for (const file of files) {
-            if (file.toString() === excludeUri.toString()) {
-                continue;
-            }
-            try {
-                const doc = await vscode.workspace.openTextDocument(file);
-                const result = this.extractProcParts(doc.getText(), procName);
-                if (result) {
-                    return result;
-                }
-            } catch {
-                continue;
-            }
+        const offset = document.offsetAt(position);
+        const call = commandContexts(text).find(context => {
+            const word = context.command.words[0];
+            return isStaticWord(word) && word.contentStart <= offset && offset <= word.contentEnd;
+        });
+        if (!call) throw new Error('Select a procedure call to inline');
+        const declarations = procedureDeclarations(text);
+        for (const uri of await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}', '**/node_modules/**')) {
+            if (uri.toString() === document.uri.toString()) continue;
+            const other = await vscode.workspace.openTextDocument(uri);
+            declarations.push(...procedureDeclarations(other.getText()));
         }
-        return null;
-    }
-
-    /**
-     * Extract parameter names and body from a `proc` definition in raw text.
-     * Handles brace-delimited bodies with nested braces.
-     */
-    private extractProcParts(
-        text: string, procName: string
-    ): { params: string[]; body: string } | null {
-        const name = escapeRegex(procName);
-        // Find the proc header: proc <name> {params}
-        const headerRegex = new RegExp(`\\bproc\\s+${name}\\s+\\{([^}]*)\\}\\s*\\{`);
-        const headerMatch = headerRegex.exec(text);
-        if (!headerMatch) {
-            return null;
-        }
-
-        // Parse params respecting braces (e.g., {c default} → param name "c")
-        const rawParams = headerMatch[1].trim();
-        const params: string[] = [];
-        let pi = 0;
-        while (pi < rawParams.length) {
-            if (rawParams[pi] === '{') {
-                const close = rawParams.indexOf('}', pi);
-                if (close === -1) { break; }
-                const inner = rawParams.substring(pi + 1, close).trim();
-                const paramName = inner.split(/\s+/)[0];
-                if (paramName) { params.push(paramName); }
-                pi = close + 1;
-            } else if (/\s/.test(rawParams[pi])) {
-                pi++;
-            } else {
-                const end = rawParams.substring(pi).search(/[\s{]/);
-                const token = end === -1 ? rawParams.substring(pi) : rawParams.substring(pi, pi + end);
-                if (token) { params.push(token); }
-                pi += token.length;
-            }
-        }
-
-        // Find the body using findMatchingBrace which handles strings and escapes
-        const bodyOpenIdx = headerMatch.index + headerMatch[0].length - 1;
-        const bodyCloseIdx = findMatchingBrace(text, bodyOpenIdx);
-        if (bodyCloseIdx === -1) {
-            return null;
-        }
-
-        const body = text.substring(bodyOpenIdx + 1, bodyCloseIdx).trim();
-        return { params, body };
-    }
-
-    /**
-     * Parse the arguments passed at a call site.
-     * Handles simple words, quoted strings, bracketed expressions, and braced groups.
-     */
-    private parseCallSiteArguments(lineText: string, procName: string): string[] | null {
-        const name = escapeRegex(procName);
-        const callMatch = new RegExp(`\\b${name}\\b`).exec(lineText);
-        if (!callMatch) {
-            return null;
-        }
-
-        // The arguments start after the proc name
-        let rest = lineText.substring(callMatch.index + callMatch[0].length);
-
-        // Strip a trailing ']' if the call was wrapped in [...]
-        const trimmed = rest.trimEnd();
-        if (trimmed.endsWith(']')) {
-            rest = trimmed.substring(0, trimmed.length - 1);
-        }
-
-        const args: string[] = [];
-        let pos = 0;
-
-        while (pos < rest.length) {
-            // Skip whitespace
-            while (pos < rest.length && /\s/.test(rest[pos])) {
-                pos++;
-            }
-            if (pos >= rest.length) {
-                break;
-            }
-
-            const ch = rest[pos];
-
-            if (ch === '"') {
-                // Quoted string
-                const end = rest.indexOf('"', pos + 1);
-                if (end === -1) {
-                    return null;
-                }
-                args.push(rest.substring(pos + 1, end));
-                pos = end + 1;
-            } else if (ch === '{') {
-                // Braced group
-                let depth = 1;
-                let j = pos + 1;
-                while (j < rest.length && depth > 0) {
-                    if (rest[j] === '{') { depth++; }
-                    else if (rest[j] === '}') { depth--; }
-                    j++;
-                }
-                args.push(rest.substring(pos + 1, j - 1));
-                pos = j;
-            } else if (ch === '[') {
-                // Bracketed command
-                let depth = 1;
-                let j = pos + 1;
-                while (j < rest.length && depth > 0) {
-                    if (rest[j] === '[') { depth++; }
-                    else if (rest[j] === ']') { depth--; }
-                    j++;
-                }
-                args.push(rest.substring(pos, j));
-                pos = j;
-            } else {
-                // Bare word / variable reference
-                let j = pos;
-                while (j < rest.length && !/\s/.test(rest[j])) {
-                    j++;
-                }
-                args.push(rest.substring(pos, j));
-                pos = j;
-            }
-        }
-
-        return args;
-    }
-
-    /**
-     * Find the range of the full call expression on the given line.
-     * Detects both bare `procName arg ...` and bracketed `[procName arg ...]`.
-     */
-    private findCallRange(
-        document: vscode.TextDocument, line: number, procName: string
-    ): vscode.Range | null {
-        const lineText = document.lineAt(line).text;
-        const name = escapeRegex(procName);
-
-        // Try bracketed call first: [procName ...]
-        const bracketRegex = new RegExp(`\\[${name}\\b[^\\]]*\\]`);
-        const bracketMatch = bracketRegex.exec(lineText);
-        if (bracketMatch) {
-            return new vscode.Range(
-                line, bracketMatch.index,
-                line, bracketMatch.index + bracketMatch[0].length
-            );
-        }
-
-        // Bare call: procName arg1 arg2 ...  (rest of line, trimmed)
-        const bareRegex = new RegExp(`\\b${name}\\b.*$`);
-        const bareMatch = bareRegex.exec(lineText);
-        if (bareMatch) {
-            const endCol = bareMatch.index + bareMatch[0].trimEnd().length;
-            return new vscode.Range(line, bareMatch.index, line, endCol);
-        }
-
-        return null;
-    }
-
-    /**
-     * Transform a procedure body for a `set x [proc ...]` call site:
-     * replace `return <value>` statements with `set <varName> <value>`.
-     */
-    private transformReturnForAssignment(body: string, varName: string, indent: string): string {
-        const lines = body.split('\n');
-        const result: string[] = [];
-
-        for (const line of lines) {
-            const returnMatch = line.match(/^\s*return\s+(.+)$/);
-            if (returnMatch) {
-                result.push(`${indent}set ${varName} ${returnMatch[1].trim()}`);
-            } else {
-                result.push(`${indent}${line.trim()}`);
-            }
-        }
-
-        return result.join('\n');
-    }
-
-    private stripTrailingReturn(body: string): string {
-        const lines = body.split('\n');
-        if (lines.length > 0) {
-            const lastLine = lines[lines.length - 1].trim();
-            const returnMatch = lastLine.match(/^return\s+(.+)$/);
-            if (returnMatch) {
-                lines[lines.length - 1] = returnMatch[1].trim();
-            } else if (lastLine === 'return') {
-                lines.pop();
-            }
-        }
-        return lines.join('\n');
-    }
-
-    private indentBody(body: string, indent: string): string {
-        const lines = body.split('\n');
-        return lines.map((line, i) => i === 0 ? line : `${indent}${line}`).join('\n');
+        const names = new Set(declarations.map(declaration => declaration.qualifiedName));
+        const target = resolveProcedureName(call.command.words[0].value, call.namespace, names);
+        const matches = declarations.filter(declaration => declaration.qualifiedName === target);
+        if (matches.length !== 1) throw new Error('The procedure definition is missing or ambiguous');
+        const definition = matches[0];
+        // apply creates the same argument bindings and local variable frame as proc.
+        // Keep the original argument source so each argument is evaluated exactly once.
+        // Relative commands and namespace variables resolve in the definition namespace.
+        const namespace = definition.qualifiedName.slice(0, definition.qualifiedName.lastIndexOf('::')) || '::';
+        const lambda = `[list ${definition.params.text} ${definition.body.text} "${escapeTclString(namespace)}"]`;
+        const args = text.slice(call.command.words[0].end, call.command.end);
+        const replacement = `::apply ${lambda}${args}`;
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(document.uri, new vscode.Range(document.positionAt(call.command.start), document.positionAt(call.command.end)), replacement);
+        return edit;
     }
 
     private analyzeCodeForExtraction(document: vscode.TextDocument, code: string, range: vscode.Selection): {
         parameters: string[];
         returnValue: string | null;
     } {
+        const selectedStart = document.offsetAt(range.start);
+        const selectedEnd = document.offsetAt(range.end);
+        const table = new DocumentSymbolTable(document);
+        table.parse();
         const parameters: string[] = [];
-        let returnValue: string | null = null;
-
-        // Find variables used in the code
-        const variablePattern = /\$([a-zA-Z_][a-zA-Z0-9_]*)/g;
-        const variables = new Set<string>();
-        let match;
-
-        while ((match = variablePattern.exec(code)) !== null) {
-            variables.add(match[1]);
+        const outputs: string[] = [];
+        const inside = (candidate: vscode.Range): boolean => document.offsetAt(candidate.start) >= selectedStart && document.offsetAt(candidate.end) <= selectedEnd;
+        for (const symbol of table.getVisibleSymbols(range.start)) {
+            if (symbol.kind === 'procedure') continue;
+            const occurrences = [symbol.range, ...symbol.references];
+            if (!occurrences.some(inside)) continue;
+            // Reference parameters are linked in the new frame, preserving scalar/array
+            // bindings and every mutation without guessing a single return value.
+            if (!inside(symbol.range)) parameters.push(symbol.name);
+            else if (occurrences.some(candidate => document.offsetAt(candidate.start) >= selectedEnd)) outputs.push(symbol.name);
         }
-
-        // Check which variables are defined before the selection
-        const textBeforeSelection = document.getText(new vscode.Range(0, 0, range.start.line, range.start.character));
-
-        for (const variable of variables) {
-            const setPattern = new RegExp(`\\bset\\s+${variable}\\b`);
-            if (setPattern.test(textBeforeSelection)) {
-                parameters.push(variable);
-            }
+        for (const usage of table.getVariableUsages()) {
+            if (inside(usage.range) && !usage.symbol) parameters.push(usage.name);
         }
-
-        // Check if the code sets a variable that is used after the selection
-        const textAfterSelection = document.getText(new vscode.Range(range.end.line, range.end.character, document.lineCount - 1, 0));
-        const setInCode = /\bset\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+/g;
-        while ((match = setInCode.exec(code)) !== null) {
-            const varName = match[1];
-            const usedAfter = new RegExp(`\\$${varName}\\b`);
-            if (usedAfter.test(textAfterSelection)) {
-                returnValue = varName;
-                break;
-            }
+        // Refactoring requires complete commands and caller-local control flow.
+        const parsed = parseTclScript(document.getText(), selectedStart, selectedEnd);
+        if (parsed.errors.length) throw new Error('Select complete Tcl commands');
+        const parentCommands = walkTclCommands(document.getText());
+        if (!parsed.commands.length || !parsed.commands.every(command => parentCommands.some(original => original.start === command.start && original.end === command.end))) throw new Error('Select complete Tcl commands');
+        for (const command of walkTclCommands(code)) {
+            if (['return', 'break', 'continue', 'uplevel', 'upvar'].includes(command.words[0]?.value)) throw new Error('The selection contains control flow that cannot be extracted safely');
         }
-
-        return { parameters, returnValue };
+        // Link external and escaping bindings through upvar at the call site.
+        // This includes outputs, so multiple assigned values and arrays retain behavior.
+        return { parameters: [...new Set([...parameters, ...outputs])], returnValue: null };
     }
 
-    private generateProcedure(name: string, parameters: string[], body: string, returnValue: string | null): string {
-        const paramList = parameters.join(' ');
-        const indentedBody = body.split('\n').map(line => `    ${line}`).join('\n');
-        
-        let procedure = `proc ${name} {${paramList}} {\n${indentedBody}`;
-        
-        if (returnValue) {
-            procedure += `\n    return $${returnValue}`;
-        }
-        
-        procedure += '\n}';
-        
-        return procedure;
+    private generateProcedure(name: string, parameters: string[], body: string, _returnValue: string | null): string {
+        let prefix = '__tcl_extract_arg';
+        while (body.includes(prefix) || parameters.some(parameter => parameter.startsWith(prefix))) prefix += '_';
+        const args = parameters.map((_, index) => `${prefix}${index}`);
+        const links = parameters.map((parameter, index) => `    upvar 1 $${args[index]} ${parameter}`).join('\n');
+        const indentedBody = body;
+        return `proc ${name} {${args.join(' ')}} {\n${links ? links + '\n' : ''}${indentedBody}\n}`;
     }
 
-    private generateProcedureCall(name: string, parameters: string[], returnValue: string | null): string {
-        const args = parameters.map(p => `$${p}`).join(' ');
-        let call = `${name} ${args}`;
-        
-        if (returnValue) {
-            call = `set ${returnValue} [${call}]`;
-        }
-        
-        return call;
+    private generateProcedureCall(name: string, parameters: string[], _returnValue: string | null): string {
+        return [name, ...parameters].join(' ');
     }
 
     private findInsertPosition(document: vscode.TextDocument, range: vscode.Selection): vscode.Position {

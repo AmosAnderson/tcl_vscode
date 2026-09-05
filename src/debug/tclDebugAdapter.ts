@@ -33,6 +33,8 @@ export class TclDebugSession extends DebugSession {
     private _isRunning = false;
     private _stopOnEntry = false;
     private _configDone = false;
+    private _configurationSent = false;
+    private _breakpointUpdates: Promise<void> = Promise.resolve();
     private _connected = false;
     private _debugRequests: PendingRequest[] = [];
     private _responseBuffer = '';
@@ -82,27 +84,19 @@ export class TclDebugSession extends DebugSession {
     protected configurationDoneRequest(response: DebugProtocol.ConfigurationDoneResponse, args: DebugProtocol.ConfigurationDoneArguments): void {
         this._configDone = true;
 
-        // Send pending breakpoints and CONFIGDONE
-        if (this._connected) {
-            this.sendPendingBreakpoints().then(() => {
-                this.sendDebugCommand('CONFIGDONE');
-            }).catch(err => {
-                this.sendEvent(new OutputEvent(`Failed to send pending breakpoints: ${err}\n`, 'stderr'));
-            });
-        }
+        void this.completeConfiguration();
 
         super.configurationDoneRequest(response, args);
     }
 
     protected async launchRequest(response: DebugProtocol.LaunchResponse, args: TclLaunchRequestArguments) {
         try {
-            if (!fs.existsSync(args.program)) {
-                this.sendErrorResponse(response, 2001, `Program file does not exist: ${args.program}`);
+            const resolvedProgram = path.resolve(args.cwd || '.', args.program);
+            if (!fs.existsSync(resolvedProgram)) {
+                this.sendErrorResponse(response, 2001, `Program file does not exist: ${resolvedProgram}`);
                 return;
             }
 
-            // Resolve to absolute path and verify it doesn't escape the workspace
-            const resolvedProgram = path.resolve(args.cwd || '.', args.program);
             const workspaceFolders = args.cwd ? [args.cwd] : [];
             if (workspaceFolders.length > 0) {
                 const inWorkspace = workspaceFolders.some(folder =>
@@ -116,7 +110,7 @@ export class TclDebugSession extends DebugSession {
                 }
             }
 
-            this._currentFile = args.program;
+            this._currentFile = resolvedProgram;
             this._stopOnEntry = args.stopOnEntry !== false;
 
             // Find the debug server script
@@ -127,17 +121,22 @@ export class TclDebugSession extends DebugSession {
             }
 
             const tclPath = args.tclPath || 'tclsh';
-            const tclArgs = [debugServerPath, args.program];
+            const tclArgs = [debugServerPath, resolvedProgram];
             if (args.args) {
                 tclArgs.push(...args.args);
             }
 
             this._tclProcess = spawn(tclPath, tclArgs, {
-                cwd: args.cwd || path.dirname(args.program),
+                cwd: args.cwd || path.dirname(resolvedProgram),
                 env: { ...process.env, ...args.env },
                 stdio: ['pipe', 'pipe', 'pipe']
             });
 
+            this._tclProcess.on('error', (error) => {
+                this.sendEvent(new OutputEvent(`Failed to start TCL process: ${error.message}\n`, 'stderr'));
+                this.cleanup();
+                this.sendEvent(new TerminatedEvent());
+            });
             if (!this._tclProcess.pid) {
                 this.sendErrorResponse(response, 2002, 'Failed to start TCL process');
                 return;
@@ -223,20 +222,7 @@ export class TclDebugSession extends DebugSession {
         this._socket = net.createConnection({ port, host: '127.0.0.1' }, () => {
             this._connected = true;
 
-            // If configuration is already done, send breakpoints and CONFIGDONE now
-            if (this._configDone) {
-                this.sendPendingBreakpoints().then(() => {
-                    this.sendDebugCommand('CONFIGDONE');
-
-                    if (this._stopOnEntry) {
-                        // Set step mode so it pauses at the first checkpoint
-                        this.sendDebugCommand('STEPIN');
-                    }
-                }).catch(err => {
-                    this.sendEvent(new OutputEvent(`Failed to send pending breakpoints: ${err}\n`, 'stderr'));
-                    this.cleanup();
-                });
-            }
+            void this.completeConfiguration();
         });
 
         this._socket.setEncoding('utf8');
@@ -254,6 +240,31 @@ export class TclDebugSession extends DebugSession {
         });
     }
 
+    private async completeConfiguration(): Promise<void> {
+        if (!this._connected || !this._configDone || this._configurationSent) return;
+        this._configurationSent = true;
+        try {
+            await this.sendPendingBreakpoints();
+            // Set the initial stop before CONFIGDONE releases the Tcl event loop.
+            if (this._stopOnEntry) await this.sendDebugCommand('STEPIN');
+            await this.sendDebugCommand('CONFIGDONE');
+        } catch (error) {
+            this.sendEvent(new OutputEvent(`Failed to configure debug server: ${error}\n`, 'stderr'));
+            this.cleanup();
+        }
+    }
+
+    /** Encode one Tcl list element without allowing literal protocol newlines. */
+    private quoteWord(value: string): string {
+        if (value.length === 0) return '{}';
+        return value.replace(/[\\\s{}[\]$";]/g, character => {
+            if (character === '\n') return '\\n';
+            if (character === '\r') return '\\r';
+            if (character === '\t') return '\\t';
+            return '\\' + character;
+        });
+    }
+
     private handleSocketData(data: string): void {
         this._responseBuffer += data;
         const lines = this._responseBuffer.split('\n');
@@ -263,15 +274,16 @@ export class TclDebugSession extends DebugSession {
 
         for (const line of lines) {
             if (line.trim() === '') continue;
-            this.handleServerMessage(line.trim());
+            const message = line.startsWith('DATA ') ? Buffer.from(line.substring(5), 'hex').toString('utf8') : line;
+            this.handleServerMessage(message);
         }
     }
 
     private handleServerMessage(message: string): void {
         if (message.startsWith('PAUSED ')) {
-            const parts = message.substring(7).split(' ');
-            this._currentFile = parts[0];
-            this._currentLine = parseInt(parts[1], 10);
+            const separator = message.lastIndexOf(' ');
+            this._currentFile = message.substring(7, separator);
+            this._currentLine = parseInt(message.substring(separator + 1), 10);
             this._isRunning = false;
 
             // Clear cached variables on pause
@@ -418,52 +430,39 @@ export class TclDebugSession extends DebugSession {
     }
 
     private resolvePendingRequest(message: string, data?: unknown): void {
-        if (this._debugRequests.length === 0) {
-            return;
-        }
-
-        // For typed responses (VARS, STACK, EVALRESULT), resolve the matching pending request
-        // For OK acknowledgments, only resolve requests whose command matches
-        if (message.startsWith('OK ')) {
-            const okPayload = message.substring(3); // e.g. "BREAK file line"
-            const idx = this._debugRequests.findIndex(r => okPayload.startsWith(r.command.split(' ')[0]));
-            if (idx >= 0) {
-                const pending = this._debugRequests.splice(idx, 1)[0];
-                pending.resolve(data !== undefined ? data : message);
-            }
-        } else {
-            // VARS, STACK, EVALRESULT — match against the pending command type
-            const responseType = message.split(' ')[0].split('\x1E')[0]; // e.g. "VARS", "STACK", "EVALRESULT"
-            const idx = this._debugRequests.findIndex(r => r.command.startsWith(responseType));
-            if (idx >= 0) {
-                const pending = this._debugRequests.splice(idx, 1)[0];
-                pending.resolve(data !== undefined ? data : message);
-            } else {
-                // Fallback: resolve the oldest request
-                const pending = this._debugRequests.shift()!;
-                pending.resolve(data !== undefined ? data : message);
-            }
+        const responseType = message.split(' ', 1)[0].split('\x1E', 1)[0];
+        const commandType = responseType === 'OK'
+            ? message.substring(3).split(' ', 1)[0]
+            : responseType === 'EVALRESULT' ? 'EVAL' : responseType;
+        const index = this._debugRequests.findIndex(request => request.command.split(' ', 1)[0] === commandType);
+        if (index >= 0) {
+            const pending = this._debugRequests.splice(index, 1)[0];
+            pending.resolve(data !== undefined ? data : message);
         }
     }
 
     private async sendPendingBreakpoints(): Promise<void> {
-        for (const [filePath, bps] of this._pendingBreakpoints) {
-            // Clear all breakpoints for this file first
-            const normalizedPath = toForwardSlashes(filePath);
-            for (const bp of bps) {
-                try {
-                    await this.sendDebugCommand(`BREAK {${normalizedPath}} ${bp.line} {${bp.condition}} {${bp.logMessage}}`);
-                } catch {
-                    // Connection might not be ready yet
-                }
-            }
+        for (const [filePath, breakpoints] of this._pendingBreakpoints) {
+            await this.replaceServerBreakpoints(filePath, breakpoints);
         }
+    }
+
+    private replaceServerBreakpoints(filePath: string, breakpoints: Array<{line: number; condition: string; logMessage: string}>): Promise<void> {
+        const file = this.quoteWord(toForwardSlashes(filePath));
+        // Serialize replacements so rapid edits cannot interleave CLEAR and BREAK.
+        const update = this._breakpointUpdates.then(async () => {
+            await this.sendDebugCommand(`CLEARFILE ${file}`);
+            for (const breakpoint of breakpoints) {
+                await this.sendDebugCommand(`BREAK ${file} ${breakpoint.line} ${this.quoteWord(breakpoint.condition)} ${this.quoteWord(breakpoint.logMessage)}`);
+            }
+        });
+        this._breakpointUpdates = update.catch(() => {});
+        return update;
     }
 
     protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
         const filePath = args.source.path as string;
         const sourceBreakpoints = args.breakpoints || [];
-        const normalizedPath = toForwardSlashes(filePath);
 
         // Store breakpoints (with conditions and log messages) for sending when connected
         const pending = sourceBreakpoints.map(sbp => ({
@@ -480,14 +479,10 @@ export class TclDebugSession extends DebugSession {
 
         this._breakpoints.set(filePath, breakpoints);
 
-        // If already connected, send breakpoints to the debug server
-        if (this._connected && this._socket) {
-            // Clear existing breakpoints for this file, then set new ones
-            for (const bp of pending) {
-                this.sendDebugCommand(`BREAK {${normalizedPath}} ${bp.line} {${bp.condition}} {${bp.logMessage}}`).catch(() => {
-                    // Ignore errors — breakpoints may not be acknowledged if connection drops
-                });
-            }
+        if (this._connected && this._configurationSent) {
+            void this.replaceServerBreakpoints(filePath, pending).catch(error => {
+                this.sendEvent(new OutputEvent(`Failed to update breakpoints: ${error}\n`, 'stderr'));
+            });
         }
 
         response.body = { breakpoints };
@@ -610,7 +605,7 @@ export class TclDebugSession extends DebugSession {
             return;
         }
 
-        this.sendDebugCommand<DebugProtocol.Variable[]>(`ARRAY {${varName}} ${scope}`).then(elements => {
+        this.sendDebugCommand<DebugProtocol.Variable[]>(`ARRAY ${this.quoteWord(varName)} ${scope}`).then(elements => {
             this._cachedVariables.set(handleValue, elements);
             response.body = { variables: elements };
             this.sendResponse(response);
@@ -626,7 +621,7 @@ export class TclDebugSession extends DebugSession {
             return;
         }
 
-        this.sendDebugCommand(`SETVAR ${args.name} ${args.value}`).then(() => {
+        this.sendDebugCommand(`SETVAR ${this.quoteWord(args.name)} ${this.quoteWord(args.value)}`).then(() => {
             // Clear variable cache
             this._cachedVariables.clear();
             response.body = { value: args.value };
@@ -642,7 +637,7 @@ export class TclDebugSession extends DebugSession {
         this._cachedStack = [];
 
         if (this._connected) {
-            this.sendDebugCommand('CONTINUE');
+            void this.sendDebugCommand('CONTINUE').catch(() => {});
         }
 
         response.body = { allThreadsContinued: true };
@@ -654,7 +649,7 @@ export class TclDebugSession extends DebugSession {
         this._cachedVariables.clear();
 
         if (this._connected) {
-            this.sendDebugCommand('STEP');
+            void this.sendDebugCommand('STEP').catch(() => {});
         }
 
         this.sendResponse(response);
@@ -665,7 +660,7 @@ export class TclDebugSession extends DebugSession {
         this._cachedVariables.clear();
 
         if (this._connected) {
-            this.sendDebugCommand('STEPIN');
+            void this.sendDebugCommand('STEPIN').catch(() => {});
         }
 
         this.sendResponse(response);
@@ -676,7 +671,7 @@ export class TclDebugSession extends DebugSession {
         this._cachedVariables.clear();
 
         if (this._connected) {
-            this.sendDebugCommand('STEPOUT');
+            void this.sendDebugCommand('STEPOUT').catch(() => {});
         }
 
         this.sendResponse(response);
@@ -692,7 +687,7 @@ export class TclDebugSession extends DebugSession {
             return;
         }
 
-        this.sendDebugCommand<{ status: string; result: string }>(`EVAL ${args.expression}`).then(evalResult => {
+        this.sendDebugCommand<{ status: string; result: string }>(`EVAL ${this.quoteWord(args.expression)}`).then(evalResult => {
             response.body = {
                 result: evalResult.status === 'OK' ? evalResult.result : `Error: ${evalResult.result}`,
                 variablesReference: 0
@@ -743,7 +738,9 @@ export class TclDebugSession extends DebugSession {
             proc.once('exit', () => clearTimeout(forceKillTimer));
         }
 
-        this._debugRequests = [];
+        for (const request of this._debugRequests.splice(0)) {
+            request.reject(new Error('Debug session ended'));
+        }
         this._cachedVariables.clear();
         this._cachedStack = [];
     }

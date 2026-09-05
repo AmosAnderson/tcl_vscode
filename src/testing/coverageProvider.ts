@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
-import { createTempTclPath, toForwardSlashes } from '../utils/tclUtils';
+import { createTempTclPath } from '../utils/tclUtils';
+import { createCoverageExecutionScript, COVERAGE_BEGIN, COVERAGE_END } from './coverageExecution';
 
 interface CoverageData {
     file: string;
@@ -18,6 +19,8 @@ export class TclCoverageProvider {
     private _decorationType: vscode.TextEditorDecorationType;
     private _uncoveredDecorationType: vscode.TextEditorDecorationType;
     private _disposables: vscode.Disposable[] = [];
+    private _runningProcesses = new Set<ChildProcess>();
+    private _testErrors = '';
 
     constructor() {
         this._outputChannel = vscode.window.createOutputChannel('TCL Coverage');
@@ -48,10 +51,7 @@ export class TclCoverageProvider {
             
             // Run the instrumented tests
             const coverageResults = await this.runCoverageAnalysis(coverageScript);
-            const fileData = await this.readCoverageFile();
-            const combined = coverageResults + '\n' + fileData;
-            // Parse combined results
-            this.parseCoverageResults(combined);
+            this.parseCoverageResults(coverageResults);
             
             // Update display
             this.updateCoverageDisplay();
@@ -66,83 +66,11 @@ export class TclCoverageProvider {
     }
 
     private createCoverageScript(testFiles: string[]): string {
-        // Create a TCL script that instruments code for coverage
-        return `
-# Simple coverage instrumentation for TCL
-set coverage_data [dict create]
-set coverage_files [list]
-
-if {[info commands original_proc] eq ""} {rename proc original_proc}
-proc proc {name args body} {
-    global coverage_data coverage_files
-    set file [info script]
-    if {$file eq ""} { set file "<interactive>" }
-    if {$file ni $coverage_files} { lappend coverage_files $file }
-    set instrumented_body ""
-    set __cov_line 1
-    foreach line [split $body "\n"] {
-        if {[string trim $line] ne ""} {
-            append instrumented_body "dict incr coverage_data $file line_$__cov_line\n"
-        }
-        append instrumented_body "$line\n"
-        incr __cov_line
-    }
-    original_proc $name $args $instrumented_body
-}
-
-# Function to save coverage data
-proc save_coverage_data {filename} {
-    global coverage_data coverage_files
-    
-    set fp [open $filename w]
-    puts $fp "# TCL Coverage Data"
-    
-    foreach file $coverage_files {
-        puts $fp "FILE:$file"
-        foreach key [dict keys $coverage_data] {
-            if {[string match "*_line_*" $key]} {
-                set parts [split $key "_"]
-                set line_num [lindex $parts end]
-                set count [dict get $coverage_data $key]
-                puts $fp "LINE:$line_num:$count"
-            }
-        }
-    }
-    close $fp
-}
-
-# Source each test file
-${testFiles.map(file => { const fp = toForwardSlashes(file); return `
-if {[catch {source {${fp}}} error]} {
-    puts stderr "Error sourcing ${fp}: $error"
-}
-`; }).join('\n')}
-
-# Run all test procedures
-foreach proc_name [info procs test_*] {
-    if {[catch {$proc_name} error]} {
-        puts stderr "Test $proc_name failed: $error"
-    }
-}
-
-# Run tcltest tests if available
-if {[catch {package require tcltest} error] == 0} {
-    ::tcltest::runAllTests
-}
-
-# Save coverage data & echo summary for parser
-save_coverage_data "coverage.dat"
-foreach file $coverage_files {
-    puts "FILE:$file"
-    foreach key [dict keys $coverage_data] {
-        if {[string match "$file line_*" $key]} {
-            set ln [string range $key [expr {[string last _ $key] + 1}] end]
-            puts "LINE:$ln:[dict get $coverage_data $key]"
-        }
-    }
-}
-puts "Coverage data saved"
-`;
+        const roots = [
+            ...(vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) || []),
+            ...testFiles.map(file => path.dirname(file))
+        ];
+        return createCoverageExecutionScript(testFiles, roots);
     }
 
     private async runCoverageAnalysis(script: string): Promise<string> {
@@ -160,9 +88,22 @@ puts "Coverage data saved"
             }
 
             const process = spawn(tclPath, [tmpFile], {
+                cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
                 stdio: ['pipe', 'pipe', 'pipe']
             });
 
+            this._runningProcesses.add(process);
+            let timedOut = false;
+            const timer = setTimeout(() => {
+                timedOut = true;
+                process.kill('SIGKILL');
+            }, 60000);
+            const cleanup = () => {
+                clearTimeout(timer);
+                this._runningProcesses.delete(process);
+                try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+            };
+            process.stdin?.end();
             let output = '';
             let errorOutput = '';
 
@@ -175,8 +116,13 @@ puts "Coverage data saved"
             });
 
             process.on('close', (code) => {
-                try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
-                if (code === 0) {
+                cleanup();
+                if (timedOut) {
+                    reject(new Error('Coverage analysis timed out after 60 seconds'));
+                } else if (code === 0 || output.includes(COVERAGE_END)) {
+                    this._testErrors = code === 0 ? '' :
+                        [errorOutput, output.split(COVERAGE_BEGIN)[0]].filter(Boolean).join('\n') ||
+                        'One or more TCL tests failed.';
                     resolve(output);
                 } else {
                     reject(new Error(errorOutput || 'Coverage analysis failed'));
@@ -184,7 +130,7 @@ puts "Coverage data saved"
             });
 
             process.on('error', (error) => {
-                try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+                cleanup();
                 reject(error);
             });
         });
@@ -193,12 +139,17 @@ puts "Coverage data saved"
     private parseCoverageResults(results: string): void {
         this._coverageData.clear();
         
-        const lines = results.split('\n');
+        const begin = results.lastIndexOf(COVERAGE_BEGIN);
+        const end = results.indexOf(COVERAGE_END, begin);
+        if (begin < 0 || end < 0) {
+            throw new Error('Coverage process did not produce a complete report');
+        }
+        const lines = results.slice(begin + COVERAGE_BEGIN.length, end).split(/\r?\n/);
         let currentFile = '';
         
         for (const line of lines) {
-            if (line.startsWith('FILE:')) {
-                currentFile = line.substring(5);
+            if (line.startsWith('FILEHEX:')) {
+                currentFile = path.normalize(Buffer.from(line.substring(8), 'hex').toString('utf8'));
                 if (!this._coverageData.has(currentFile)) {
                     this._coverageData.set(currentFile, {
                         file: currentFile,
@@ -213,6 +164,7 @@ puts "Coverage data saved"
                 if (parts.length >= 2) {
                     const lineNum = parseInt(parts[0]);
                     const count = parseInt(parts[1]);
+                    if (!Number.isInteger(lineNum) || lineNum < 1 || !Number.isInteger(count) || count < 0) { continue; }
                     
                     const coverage = this._coverageData.get(currentFile)!;
                     coverage.lines.set(lineNum, {
@@ -231,17 +183,6 @@ puts "Coverage data saved"
             coverage.percentage = coverage.totalLines > 0 
                 ? (coverage.coveredLines / coverage.totalLines) * 100 
                 : 0;
-        }
-    }
-
-    private async readCoverageFile(): Promise<string> {
-        try {
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (!workspaceRoot) return '';
-            const data = await fs.promises.readFile(path.join(workspaceRoot, 'coverage.dat'), 'utf8');
-            return data;
-        } catch {
-            return '';
         }
     }
 
@@ -266,6 +207,7 @@ puts "Coverage data saved"
 
         for (const [lineNum, lineData] of coverage.lines) {
             const lineIndex = lineNum - 1;
+            if (lineIndex >= editor.document.lineCount) { continue; }
             const lineText = editor.document.lineAt(lineIndex).text;
             const range = new vscode.Range(lineIndex, 0, lineIndex, lineText.length);
             
@@ -308,6 +250,10 @@ puts "Coverage data saved"
             ''
         );
 
+        if (this._testErrors) {
+            summaryLines.push('', 'Test errors:', this._testErrors);
+            vscode.window.showWarningMessage('Coverage collected with test failures. See the TCL Coverage output.');
+        }
         this._outputChannel.clear();
         this._outputChannel.appendLine(summaryLines.join('\n'));
         this._outputChannel.show();
@@ -321,6 +267,7 @@ puts "Coverage data saved"
 
     public clearCoverage(): void {
         this._coverageData.clear();
+        this._testErrors = '';
         
         // Clear decorations from all editors
         vscode.window.visibleTextEditors.forEach(editor => {
@@ -451,6 +398,10 @@ puts "Coverage data saved"
     }
 
     public dispose(): void {
+        for (const process of this._runningProcesses) {
+            try { process.kill('SIGKILL'); } catch { /* already exited */ }
+        }
+        this._runningProcesses.clear();
         this._disposables.forEach(d => d.dispose());
         this._disposables = [];
         this._outputChannel.dispose();

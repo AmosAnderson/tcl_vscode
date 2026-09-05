@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
-import { findMatchingBrace } from '../utils/tclUtils';
+import { getExpressionWords, getScriptWords, isStaticWord, parseTclList, parseTclScript, parseTclExpressionSubstitutions, TclCommand, TclWord } from '../utils/tclParser';
 
 export type SymbolKind = 'procedure' | 'variable' | 'namespace' | 'parameter';
 export type VariableScope = 'local' | 'global' | 'namespace' | 'upvar' | 'parameter';
-
 export interface ScopeNode {
     name: string;
     kind: 'procedure' | 'namespace' | 'global';
@@ -12,7 +11,6 @@ export interface ScopeNode {
     children: ScopeNode[];
     symbols: SymbolEntry[];
 }
-
 export interface SymbolEntry {
     name: string;
     kind: SymbolKind;
@@ -22,520 +20,189 @@ export interface SymbolEntry {
     aliasOf?: string;
 }
 
+/** Statically resolved bindings and source ranges, never regex matches in literal data. */
 export class DocumentSymbolTable {
     private root: ScopeNode;
-    private document: vscode.TextDocument;
-
-    constructor(document: vscode.TextDocument) {
-        this.document = document;
-        this.root = {
-            name: '<global>',
-            kind: 'global',
-            range: new vscode.Range(0, 0, document.lineCount - 1, 0),
-            parent: null,
-            children: [],
-            symbols: []
-        };
+    private pending: { scope: ScopeNode; name: string; start: number; end: number }[] = [];
+    private text = '';
+    constructor(private document: vscode.TextDocument) {
+        this.root = { name: '<global>', kind: 'global', range: new vscode.Range(0, 0, 0, 0), parent: null, children: [], symbols: [] };
     }
 
-    /** Build the symbol table by parsing the document. */
     parse(): void {
+        this.text = this.document.getText();
+        this.root.range = this.range(0, this.text.length);
         this.root.children = [];
         this.root.symbols = [];
-
-        const text = this.document.getText();
-        const lines = text.split('\n');
-        const scopeStack: ScopeNode[] = [this.root];
-
-        // braceStack tracks the character offset of each opening brace so we
-        // know which closing brace matches which opening scope.
-        const braceStack: { offset: number; scopeIndex: number }[] = [];
-        let charOffset = 0;
-
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-            const line = lines[lineNum];
-            const trimmed = line.trim();
-
-            // Skip pure comment lines
-            if (trimmed.startsWith('#')) {
-                charOffset += line.length + 1;
-                continue;
-            }
-
-            // --- Detect scope-opening constructs BEFORE processing braces ---
-            this.detectProcDefinition(line, lineNum, charOffset, text, scopeStack, braceStack);
-            this.detectNamespaceEval(line, lineNum, charOffset, text, scopeStack, braceStack);
-
-            // --- Detect variable declarations ---
-            this.detectSetCommand(line, lineNum, scopeStack);
-            this.detectVariableCommand(line, lineNum, scopeStack);
-            this.detectGlobalCommand(line, lineNum, scopeStack);
-            this.detectUpvarCommand(line, lineNum, scopeStack);
-
-            // --- Detect variable references ($var / ${var}) ---
-            this.detectVariableReferences(line, lineNum, scopeStack);
-
-            // --- Track braces for scope closing ---
-            this.trackBraces(line, lineNum, charOffset, scopeStack, braceStack);
-
-            charOffset += line.length + 1;
+        this.pending = [];
+        this.visit(parseTclScript(this.text).commands, this.root);
+        for (const ref of this.pending) {
+            const symbol = this.resolve(ref.scope, ref.name);
+            if (symbol) this.addReference(symbol, this.range(ref.start, ref.end));
         }
     }
 
-    /** Get the innermost scope containing a position. */
+    getRoot(): ScopeNode { return this.root; }
     getScopeAt(position: vscode.Position): ScopeNode {
-        return this.findScopeAt(this.root, position);
+        const find = (scope: ScopeNode): ScopeNode => {
+            for (const child of scope.children) if (child.range.contains(position)) return find(child);
+            return scope;
+        };
+        return find(this.root);
     }
-
-    /** Get all symbols visible at a position (walks up scope chain). */
     getVisibleSymbols(position: vscode.Position): SymbolEntry[] {
-        const visible: SymbolEntry[] = [];
+        const result: SymbolEntry[] = [];
         let scope: ScopeNode | null = this.getScopeAt(position);
         while (scope) {
-            for (const sym of scope.symbols) {
-                // Don't shadow: only add if not already present with same name
-                if (!visible.some(v => v.name === sym.name && v.kind === sym.kind)) {
-                    visible.push(sym);
-                }
-            }
+            for (const symbol of scope.symbols) if (!result.some(s => s.name === symbol.name)) result.push(symbol);
+            if (scope.kind === 'procedure') break;
             scope = scope.parent;
         }
-        return visible;
+        return result;
     }
-
-    /** Get symbol info at a specific position. */
     getSymbolAt(position: vscode.Position): SymbolEntry | undefined {
-        const wordRange = this.document.getWordRangeAtPosition(position);
-        if (!wordRange) {
-            return undefined;
-        }
-
-        const word = this.document.getText(wordRange);
-        const line = this.document.lineAt(position.line).text;
-        const charBefore = wordRange.start.character > 0
-            ? line[wordRange.start.character - 1]
-            : '';
-
-        // Strip leading $ for variable references
-        if (charBefore === '$') {
-            // word is already just the name (VS Code word range excludes $)
-        }
-
-        // Walk up scope chain to find the symbol
-        let scope: ScopeNode | null = this.getScopeAt(position);
-        while (scope) {
-            const match = scope.symbols.find(s => s.name === word);
-            if (match) {
-                return match;
+        // Exact recorded ranges distinguish parameters, command names, and literal words.
+        const find = (scope: ScopeNode): SymbolEntry | undefined => {
+            for (const symbol of scope.symbols) {
+                if (symbol.range.contains(position) || symbol.references.some(r => r.contains(position))) return symbol;
             }
-            scope = scope.parent;
+            for (const child of scope.children) { const match = find(child); if (match) return match; }
+            return undefined;
+        };
+        return find(this.root);
+    }
+    getScopedReferences(name: string, position: vscode.Position): vscode.Range[] {
+        const symbol = this.getSymbolAt(position);
+        return symbol && symbol.name === name ? [symbol.range, ...symbol.references] : [];
+    }
+    getVariableUsages(): { name: string; range: vscode.Range; symbol?: SymbolEntry }[] {
+        return this.pending.map(ref => ({ name: ref.name, range: this.range(ref.start, ref.end), symbol: this.resolve(ref.scope, ref.name) }));
+    }
+    private range(start: number, end: number): vscode.Range { return new vscode.Range(this.document.positionAt(start), this.document.positionAt(end)); }
+    private addReference(symbol: SymbolEntry, range: vscode.Range): void {
+        if (!symbol.range.isEqual(range) && !symbol.references.some(r => r.isEqual(range))) symbol.references.push(range);
+    }
+    private resolve(scope: ScopeNode, name: string): SymbolEntry | undefined {
+        if (name.startsWith('::')) return this.root.symbols.find(s => s.name === name || s.name === name.slice(2));
+        let current: ScopeNode | null = scope;
+        while (current) {
+            const match = current.symbols.find(s => s.name === name && s.kind !== 'procedure');
+            if (match) return match;
+            if (current.kind === 'procedure') break;
+            current = current.parent;
         }
         return undefined;
     }
-
-    /** Get all references to a symbol, respecting scope. */
-    getScopedReferences(symbolName: string, position: vscode.Position): vscode.Range[] {
-        // Find the symbol's owning scope
-        const owningScope = this.findSymbolOwningScope(symbolName, position);
-        if (!owningScope) {
-            return [];
+    private bind(scope: ScopeNode, word: TclWord, kind: SymbolKind = 'variable', variableScope?: VariableScope, aliasOf?: string): void {
+        if (!word || word.expanded) return;
+        const match = /^([\p{L}\p{M}\p{N}_:]+)(?:\([\s\S]*\))?$/u.exec(word.value);
+        if (!match) return;
+        const name = match[1];
+        const range = this.range(word.contentStart, word.contentStart + name.length);
+        let owner = name.startsWith('::') ? this.root : scope;
+        if (variableScope === 'global') owner = this.root;
+        if (variableScope === 'namespace') {
+            while (owner.parent && owner.kind === 'procedure') owner = owner.parent;
         }
-
-        const symbol = owningScope.symbols.find(s => s.name === symbolName);
+        let symbol = owner.symbols.find(s => s.name === name && s.kind !== 'procedure');
         if (!symbol) {
-            return [];
-        }
-
-        // Return the definition + all references
-        const ranges: vscode.Range[] = [symbol.range, ...symbol.references];
-        return ranges;
+            symbol = { name, kind, scope: variableScope ?? (owner.kind === 'global' ? 'global' : owner.kind === 'namespace' ? 'namespace' : 'local'), range, references: [], aliasOf };
+            owner.symbols.push(symbol);
+        } else this.addReference(symbol, range);
+        if (owner !== scope && !scope.symbols.includes(symbol) && !name.startsWith('::')) scope.symbols.push(symbol);
     }
 
-    /** Get the root scope. */
-    getRoot(): ScopeNode {
-        return this.root;
-    }
-
-    // --- Private helpers ---
-
-    private findScopeAt(scope: ScopeNode, position: vscode.Position): ScopeNode {
-        for (const child of scope.children) {
-            if (child.range.contains(position)) {
-                return this.findScopeAt(child, position);
+    private variableTargets(command: TclCommand, scope: ScopeNode): void {
+        const w = command.words;
+        if (!isStaticWord(w[0]) || w.some(word => word.expanded)) return;
+        const name = w[0].value.replace(/^::/, '');
+        const bind = (word: TclWord | undefined, type?: VariableScope) => { if (word) this.bind(scope, word, 'variable', type); };
+        if (['set', 'incr', 'append', 'lappend', 'lset'].includes(name)) bind(w[1]);
+        else if (name === 'unset') w.slice(1).filter(word => !word.value.startsWith('-')).forEach(word => bind(word));
+        else if (name === 'global') w.slice(1).forEach(word => bind(word, 'global'));
+        else if (name === 'variable') for (let i = 1; i < w.length; i += 2) bind(w[i], 'namespace');
+        else if (name === 'upvar') {
+            const start = /^#?\d+$/.test(w[1]?.value ?? '') ? 2 : 1;
+            for (let i = start; i + 1 < w.length; i += 2) this.bind(scope, w[i + 1], 'variable', 'upvar', w[i].value);
+        } else if (name === 'foreach' || name === 'lmap') {
+            for (let i = 1; i < w.length - 1; i += 2) {
+                if (isStaticWord(w[i])) parseTclList(this.text, w[i].contentStart, w[i].contentEnd).words.forEach(word => bind(word));
+            }
+        } else if (name === 'catch') { bind(w[2]); bind(w[3]); }
+        else if (name === 'gets') bind(w[2]);
+        else if (name === 'array') bind(w[2]);
+        else if (name === 'dict') {
+            if (['set', 'unset', 'incr', 'append', 'lappend', 'update', 'with'].includes(w[1]?.value)) bind(w[2]);
+            if (['for', 'map'].includes(w[1]?.value) && isStaticWord(w[2])) parseTclList(this.text, w[2].contentStart, w[2].contentEnd).words.forEach(word => bind(word));
+            if (w[1]?.value === 'update') for (let i = 4; i < w.length - 1; i += 2) bind(w[i]);
+        } else if (name === 'try') {
+            for (let i = 2; i + 3 < w.length; i += 4) {
+                if (['on', 'trap'].includes(w[i].value) && isStaticWord(w[i + 2])) parseTclList(this.text, w[i + 2].contentStart, w[i + 2].contentEnd).words.forEach(word => bind(word));
             }
         }
-        return scope;
     }
 
-    private findSymbolOwningScope(
-        symbolName: string,
-        position: vscode.Position
-    ): ScopeNode | null {
-        let scope: ScopeNode | null = this.getScopeAt(position);
-        while (scope) {
-            if (scope.symbols.some(s => s.name === symbolName)) {
-                return scope;
-            }
-            scope = scope.parent;
-        }
-        return null;
-    }
-
-    private currentScope(stack: ScopeNode[]): ScopeNode {
-        return stack[stack.length - 1];
-    }
-
-    /** Detect `proc name {params} {` and create a child scope + parameter symbols. */
-    private detectProcDefinition(
-        line: string,
-        lineNum: number,
-        lineOffset: number,
-        fullText: string,
-        scopeStack: ScopeNode[],
-        braceStack: { offset: number; scopeIndex: number }[]
-    ): void {
-        const procMatch = line.match(/\bproc\s+([\w:]+)\s*\{/);
-        if (!procMatch) {
-            return;
-        }
-
-        const procName = procMatch[1];
-        const procIndex = line.indexOf(procMatch[0]);
-
-        // Find opening brace of params
-        const paramsOpenIdx = lineOffset + line.indexOf('{', procIndex + 5);
-        const paramsCloseIdx = findMatchingBrace(fullText, paramsOpenIdx);
-        if (paramsCloseIdx === -1) {
-            return;
-        }
-
-        const paramsText = fullText.substring(paramsOpenIdx + 1, paramsCloseIdx).trim();
-
-        // Find opening brace of body (after params close brace)
-        const afterParams = fullText.substring(paramsCloseIdx + 1);
-        const bodyBraceRelative = afterParams.search(/\{/);
-        if (bodyBraceRelative === -1) {
-            return;
-        }
-
-        const bodyOpenIdx = paramsCloseIdx + 1 + bodyBraceRelative;
-        const bodyCloseIdx = findMatchingBrace(fullText, bodyOpenIdx);
-        if (bodyCloseIdx === -1) {
-            return;
-        }
-
-        const bodyStartPos = this.document.positionAt(bodyOpenIdx);
-        const bodyEndPos = this.document.positionAt(bodyCloseIdx);
-
-        const scopeNode: ScopeNode = {
-            name: procName,
-            kind: 'procedure',
-            range: new vscode.Range(bodyStartPos, bodyEndPos),
-            parent: this.currentScope(scopeStack),
-            children: [],
-            symbols: []
-        };
-        this.currentScope(scopeStack).children.push(scopeNode);
-
-        // Parse parameters into SymbolEntries
-        if (paramsText) {
-            const params = this.parseParamList(paramsText);
-            const paramsStartLine = this.document.positionAt(paramsOpenIdx + 1).line;
-            for (const param of params) {
-                scopeNode.symbols.push({
-                    name: param,
-                    kind: 'parameter',
-                    scope: 'parameter',
-                    range: new vscode.Range(paramsStartLine, 0, paramsStartLine, 0),
-                    references: []
-                });
-            }
-        }
-
-        // Push scope so subsequent lines inside the body are in this scope.
-        // We record the body opening brace so trackBraces knows when to pop.
-        scopeStack.push(scopeNode);
-        braceStack.push({ offset: bodyOpenIdx, scopeIndex: scopeStack.length - 1 });
-    }
-
-    /** Detect `namespace eval name {` and create a child scope. */
-    private detectNamespaceEval(
-        line: string,
-        lineNum: number,
-        lineOffset: number,
-        fullText: string,
-        scopeStack: ScopeNode[],
-        braceStack: { offset: number; scopeIndex: number }[]
-    ): void {
-        const nsMatch = line.match(/\bnamespace\s+eval\s+([\w:]+)\s*\{/);
-        if (!nsMatch) {
-            return;
-        }
-
-        const nsName = nsMatch[1];
-        const matchIdx = line.indexOf(nsMatch[0]);
-        const braceIdx = lineOffset + line.indexOf('{', matchIdx + nsMatch[0].length - 1);
-        const closeIdx = findMatchingBrace(fullText, braceIdx);
-        if (closeIdx === -1) {
-            return;
-        }
-
-        const startPos = this.document.positionAt(braceIdx);
-        const endPos = this.document.positionAt(closeIdx);
-
-        const scopeNode: ScopeNode = {
-            name: nsName,
-            kind: 'namespace',
-            range: new vscode.Range(startPos, endPos),
-            parent: this.currentScope(scopeStack),
-            children: [],
-            symbols: []
-        };
-        this.currentScope(scopeStack).children.push(scopeNode);
-
-        scopeStack.push(scopeNode);
-        braceStack.push({ offset: braceIdx, scopeIndex: scopeStack.length - 1 });
-    }
-
-    /** Detect `set varName` (not array element set) and create a local variable if first use. */
-    private detectSetCommand(
-        line: string,
-        lineNum: number,
-        scopeStack: ScopeNode[]
-    ): void {
-        const setMatch = line.match(/\bset\s+([\w:]+)(?:\s|$)/);
-        if (!setMatch) {
-            return;
-        }
-
-        const varName = setMatch[1];
-        // Skip array element assignments like set arr(key)
-        if (line.match(new RegExp(`\\bset\\s+${varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\(`))) {
-            return;
-        }
-
-        const scope = this.currentScope(scopeStack);
-        if (!scope.symbols.some(s => s.name === varName)) {
-            const col = line.indexOf(varName, line.indexOf('set'));
-            scope.symbols.push({
-                name: varName,
-                kind: 'variable',
-                scope: scope.kind === 'global' ? 'global' : 'local',
-                range: new vscode.Range(lineNum, col, lineNum, col + varName.length),
-                references: []
-            });
-        }
-    }
-
-    /** Detect `variable varName` → namespace-scoped variable. */
-    private detectVariableCommand(
-        line: string,
-        lineNum: number,
-        scopeStack: ScopeNode[]
-    ): void {
-        const varMatch = line.match(/\bvariable\s+([\w:]+)/);
-        if (!varMatch) {
-            return;
-        }
-
-        const varName = varMatch[1];
-        const scope = this.currentScope(scopeStack);
-        if (!scope.symbols.some(s => s.name === varName)) {
-            const col = line.indexOf(varName, line.indexOf('variable'));
-            scope.symbols.push({
-                name: varName,
-                kind: 'variable',
-                scope: 'namespace',
-                range: new vscode.Range(lineNum, col, lineNum, col + varName.length),
-                references: []
-            });
-        }
-    }
-
-    /** Detect `global varName` → marks variable as global. */
-    private detectGlobalCommand(
-        line: string,
-        lineNum: number,
-        scopeStack: ScopeNode[]
-    ): void {
-        const globalMatch = line.match(/\bglobal\s+(.+)/);
-        if (!globalMatch) {
-            return;
-        }
-
-        const varNames = globalMatch[1].trim().split(/\s+/);
-        const scope = this.currentScope(scopeStack);
-        for (const varName of varNames) {
-            if (!varName || !/^[\w:]+$/.test(varName)) {
+    private references(word: TclWord, scope: ScopeNode, expression = false): void {
+        if (word.kind === 'braced' && !expression) return;
+        // Substitution ranges are visited separately in their own command context.
+        let inQuote = false;
+        for (let i = word.contentStart; i < word.contentEnd; i++) {
+            const sub = word.commandSubstitutions.find(s => s.start === i);
+            if (sub) { i = sub.end - 1; continue; }
+            if (this.text[i] === '\\') { i++; continue; }
+            if (expression && this.text[i] === '"') { inQuote = !inQuote; continue; }
+            if (expression && this.text[i] === '{' && !inQuote) {
+                let depth = 1;
+                while (++i < word.contentEnd && depth) {
+                    if (this.text[i] === '\\') i++;
+                    else if (this.text[i] === '{') depth++;
+                    else if (this.text[i] === '}') depth--;
+                }
+                i--;
                 continue;
             }
-            if (!scope.symbols.some(s => s.name === varName)) {
-                const col = line.indexOf(varName, line.indexOf('global'));
-                scope.symbols.push({
-                    name: varName,
-                    kind: 'variable',
-                    scope: 'global',
-                    range: new vscode.Range(lineNum, col, lineNum, col + varName.length),
-                    references: []
-                });
-            }
+            if (this.text[i] !== '$') continue;
+            const match = /^\$\{([\p{L}\p{M}\p{N}_:]+)\}|^\$([\p{L}\p{M}\p{N}_:]+)/u.exec(this.text.slice(i, word.contentEnd));
+            if (!match) continue;
+            const name = match[1] ?? match[2];
+            const start = i + (match[1] ? 2 : 1);
+            this.pending.push({ scope, name, start, end: start + name.length });
+            i += match[0].length - 1;
         }
     }
 
-    /** Detect `upvar ?level? sourceVar localVar` → upvar-scoped alias. */
-    private detectUpvarCommand(
-        line: string,
-        lineNum: number,
-        scopeStack: ScopeNode[]
-    ): void {
-        const upvarMatch = line.match(/\bupvar\s+(.+)/);
-        if (!upvarMatch) {
-            return;
-        }
-
-        const args = upvarMatch[1].trim().split(/\s+/);
-        let idx = 0;
-
-        // Optional level argument (number or #N)
-        if (args.length >= 3 && /^(#?\d+)$/.test(args[0])) {
-            idx = 1;
-        }
-
-        // Remaining args are source/local pairs
-        const scope = this.currentScope(scopeStack);
-        while (idx + 1 < args.length) {
-            const sourceVar = args[idx];
-            const localVar = args[idx + 1];
-            if (/^[\w:]+$/.test(localVar) && !scope.symbols.some(s => s.name === localVar)) {
-                const col = line.lastIndexOf(localVar);
-                scope.symbols.push({
-                    name: localVar,
-                    kind: 'variable',
-                    scope: 'upvar',
-                    range: new vscode.Range(lineNum, col, lineNum, col + localVar.length),
-                    references: [],
-                    aliasOf: sourceVar
-                });
+    private visit(commands: TclCommand[], scope: ScopeNode): void {
+        for (const command of commands) {
+            const w = command.words;
+            const name = isStaticWord(w[0]) ? w[0].value.replace(/^::/, '') : '';
+            for (const word of w) {
+                this.references(word, scope);
+                this.visit(word.substitutions, scope);
             }
-            idx += 2;
-        }
-    }
-
-    /** Detect `$varName` and `${varName}` references and attach to nearest symbol. */
-    private detectVariableReferences(
-        line: string,
-        lineNum: number,
-        scopeStack: ScopeNode[]
-    ): void {
-        // Match $varName (word chars and colons) or ${varName}
-        const refRegex = /\$\{([\w:]+)\}|\$([\w:]+)/g;
-        let match;
-        while ((match = refRegex.exec(line)) !== null) {
-            const varName = match[1] || match[2];
-            const dollarIdx = match.index;
-            const nameStart = dollarIdx + (match[1] ? 2 : 1); // skip ${ or $
-            const nameEnd = nameStart + varName.length;
-            const refRange = new vscode.Range(lineNum, nameStart, lineNum, nameEnd);
-
-            // Walk up scope chain to find the symbol and add this reference
-            let scope: ScopeNode | null = this.currentScope(scopeStack);
-            while (scope) {
-                const sym = scope.symbols.find(s => s.name === varName);
-                if (sym) {
-                    // Don't add the definition position as a reference
-                    if (!sym.range.isEqual(refRange)) {
-                        sym.references.push(refRange);
-                    }
-                    break;
+            if (!w.some(word => word.expanded) && name === 'proc' && w.length === 4 && isStaticWord(w[1]) && w[2].kind === 'braced' && w[3].kind === 'braced') {
+                scope.symbols.push({ name: w[1].value, kind: 'procedure', scope: 'global', range: this.range(w[1].contentStart, w[1].contentEnd), references: [] });
+                const child: ScopeNode = { name: w[1].value, kind: 'procedure', range: this.range(command.start, command.end), parent: scope, children: [], symbols: [] };
+                scope.children.push(child);
+                for (const argument of parseTclList(this.text, w[2].contentStart, w[2].contentEnd).words) {
+                    const parameter = argument.kind === 'braced' || argument.kind === 'quoted' ? parseTclList(this.text, argument.contentStart, argument.contentEnd).words[0] : argument;
+                    if (parameter) this.bind(child, parameter, 'parameter', 'parameter');
                 }
-                scope = scope.parent;
-            }
-        }
-    }
-
-    /**
-     * Track opening/closing braces on a line to manage scope popping.
-     * Only pops scopes when a closing brace matches the opening brace
-     * that started a scope (proc body or namespace eval body).
-     */
-    private trackBraces(
-        line: string,
-        lineNum: number,
-        lineOffset: number,
-        scopeStack: ScopeNode[],
-        braceStack: { offset: number; scopeIndex: number }[]
-    ): void {
-        let inString = false;
-        for (let i = 0; i < line.length; i++) {
-            const ch = line[i];
-            if (ch === '"') {
-                let backslashes = 0;
-                let j = i - 1;
-                while (j >= 0 && line[j] === '\\') { backslashes++; j--; }
-                if (backslashes % 2 === 0) {
-                    inString = !inString;
-                }
+                this.visit(parseTclScript(this.text, w[3].contentStart, w[3].contentEnd).commands, child);
                 continue;
             }
-            if (inString) {
+            if (!w.some(word => word.expanded) && name === 'namespace' && w[1]?.value === 'eval' && w.length === 4 && isStaticWord(w[2]) && w[3].kind === 'braced') {
+                const child: ScopeNode = { name: w[2].value, kind: 'namespace', range: this.range(command.start, command.end), parent: scope, children: [], symbols: [] };
+                scope.children.push(child);
+                this.visit(parseTclScript(this.text, w[3].contentStart, w[3].contentEnd).commands, child);
                 continue;
             }
-            if (ch === '\\') {
-                i++; // skip escaped character
-                continue;
+            this.variableTargets(command, scope);
+            for (const expression of getExpressionWords(command)) if (expression.kind === 'braced') {
+                const parsed = parseTclExpressionSubstitutions(this.text, expression.contentStart, expression.contentEnd);
+                this.references({ ...expression, commandSubstitutions: parsed.spans }, scope, true);
+                this.visit(parsed.commands, scope);
             }
-            if (ch === '{') {
-                // Only push if this brace is NOT already tracked as a scope-opener
-                // (detectProcDefinition/detectNamespaceEval already pushed their braces)
-                const absOffset = lineOffset + i;
-                if (!braceStack.some(b => b.offset === absOffset)) {
-                    braceStack.push({ offset: absOffset, scopeIndex: -1 });
-                }
-            } else if (ch === '}') {
-                if (braceStack.length > 0) {
-                    const top = braceStack.pop()!;
-                    if (top.scopeIndex >= 0 && top.scopeIndex < scopeStack.length) {
-                        // This closing brace ends a scope
-                        scopeStack.splice(top.scopeIndex);
-                    }
-                }
-            }
+            for (const body of getScriptWords(command)) this.visit(parseTclScript(this.text, body.contentStart, body.contentEnd).commands, scope);
         }
-    }
-
-    /** Parse a TCL parameter list like "a b {c default}" into parameter names. */
-    private parseParamList(paramsText: string): string[] {
-        const params: string[] = [];
-        let i = 0;
-        const text = paramsText.trim();
-
-        while (i < text.length) {
-            // Skip whitespace
-            while (i < text.length && /\s/.test(text[i])) { i++; }
-            if (i >= text.length) { break; }
-
-            if (text[i] === '{') {
-                // Param with default: {name default}
-                const close = text.indexOf('}', i);
-                if (close === -1) { break; }
-                const inner = text.substring(i + 1, close).trim();
-                const name = inner.split(/\s+/)[0];
-                if (name && name !== 'args') {
-                    params.push(name);
-                } else if (name === 'args') {
-                    params.push('args');
-                }
-                i = close + 1;
-            } else {
-                // Simple param name
-                const start = i;
-                while (i < text.length && !/\s/.test(text[i])) { i++; }
-                const name = text.substring(start, i);
-                if (name) {
-                    params.push(name);
-                }
-            }
-        }
-        return params;
     }
 }

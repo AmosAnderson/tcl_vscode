@@ -130,13 +130,13 @@ When enabled, provides:
 ### `tcl.diagnostics.useTclsh`
 - **Type**: `boolean`
 - **Default**: `true`
-- **Description**: Use tclsh for advanced syntax validation
+- **Description**: Use tclsh to check command completeness without executing document code
 
 ```json
 "tcl.diagnostics.useTclsh": true
 ```
 
-**Note**: Requires `tclsh` to be available in your system PATH. When enabled, provides more accurate syntax checking using the TCL interpreter.
+**Note**: Uses `tcl.interpreter.path` (default: `tclsh`). The interpreter reads the document as data and calls `info complete`; diagnostics never source or evaluate the document. Static syntax checks run independently.
 
 ## REPL Settings
 

@@ -194,6 +194,8 @@ Example `launch.json`:
 2. Coverage indicators appear in the editor
 3. Run "TCL: Export Coverage Report" for detailed report
 
+Coverage records commands with original source locations and includes unvisited branches. Dynamically generated code without source locations and nested procedure bodies whose declarations never execute may be omitted from coverage totals.
+
 ### Refactoring
 
 #### Rename Symbol (F2)
@@ -219,7 +221,7 @@ Note: Built-in TCL commands cannot be renamed.
 #### Inline Procedure
 1. Place cursor on a procedure call
 2. Run "TCL: Inline Procedure"
-3. The call is replaced with the procedure body
+3. The call is replaced with a Tcl lambda that preserves arguments, local variables, and return behavior (Tcl 8.5+).
 
 #### Extract to Namespace
 1. Select code block

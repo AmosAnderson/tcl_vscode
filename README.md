@@ -21,6 +21,7 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 
 ### Code Formatting
 - Format entire document or selected text
+- Preserve literal values and comments; incomplete or malformed commands are left unchanged
 - Format on save (configurable)
 - Customizable options:
   - Indentation (spaces/tabs)
@@ -41,7 +42,7 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 - **Array Expansion**: Inspect array variables in the debug variables panel
 - **REPL Integration**: Interactive TCL console, evaluate selection, run current file
 - **Run Commands**: Execute scripts with a chosen interpreter or custom arguments
-- **Testing Support**: Test discovery, execution, and coverage analysis scaffolding
+- **Testing Support**: Test discovery, selected-case execution, and command coverage using Tcl execution traces
 
 ### Linting
 - Warns on unbraced `expr` arguments (double substitution risk)
@@ -61,7 +62,7 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 - **Extract Procedure**: Extract selected code into a new procedure
 - **Extract Variable**: Extract expression into a variable
 - **Inline Variable**: Replace variable uses with its value
-- **Inline Procedure**: Replace a procedure call with the body of its definition
+- **Inline Procedure**: Replace a procedure call with a Tcl lambda that preserves argument evaluation and local scope
 - **Extract to Namespace**: Move selected code into a `namespace eval` block
 
 ### Advanced Features
@@ -73,7 +74,7 @@ Comprehensive TCL (Tool Command Language) support for Visual Studio Code, includ
 
 ## Supported Tcl Versions
 
-The extension supports Tcl versions **8.4 through 9.0**. Interpreters outside this range can be added as custom paths, but some features may not function correctly.
+Interpreter discovery supports Tcl versions **8.4 through 9.0**. Debugging, coverage, and Inline Procedure require **Tcl 8.5 or newer**. Static editing features do not require an interpreter.
 
 ## Installation
 
@@ -107,7 +108,7 @@ Press `F5` to launch a new VS Code window with the extension loaded.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `tcl.diagnostics.enable` | `true` | Enable syntax diagnostics |
-| `tcl.diagnostics.useTclsh` | `true` | Use tclsh for advanced validation |
+| `tcl.diagnostics.useTclsh` | `true` | Check command completeness without executing document code |
 
 ### Linting Settings
 

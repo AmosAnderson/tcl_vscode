@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
-import { createTempTclPath, escapeTclString } from '../utils/tclUtils';
+import { createTempTclPath } from '../utils/tclUtils';
+import { createTestExecutionScript, TclTestKind, TEST_RESULT_PREFIX } from './testExecution';
 
 interface TclTestResult {
     name: string;
@@ -16,7 +17,7 @@ interface TclTestResult {
 export class TclTestProvider {
     private _outputChannel: vscode.OutputChannel;
     private _testController: vscode.TestController;
-    private _testData = new WeakMap<vscode.TestItem, { file: string; line: number }>();
+    private _testData = new WeakMap<vscode.TestItem, { file: string; line: number; kind: TclTestKind }>();
     private _fileWatcher: vscode.FileSystemWatcher | undefined;
     private _runningProcesses = new Set<ChildProcess>();
 
@@ -70,6 +71,7 @@ export class TclTestProvider {
             
             // Check if this is a test file
             if (!this.isTestFile(document)) {
+                this.removeTests(uri);
                 return;
             }
 
@@ -131,7 +133,7 @@ export class TclTestProvider {
                 );
                 
                 testItem.range = new vscode.Range(i, 0, i, line.length);
-                this._testData.set(testItem, { file: uri.fsPath, line: i + 1 });
+                this._testData.set(testItem, { file: uri.fsPath, line: i + 1, kind: 'procedure' });
                 
                 testFile.children.add(testItem);
             }
@@ -139,13 +141,15 @@ export class TclTestProvider {
     }
 
     private discoverTclTestCases(testFile: vscode.TestItem, lines: string[], uri: vscode.Uri): void {
-        // Look for tcltest::test calls
+        // Bare test declarations are valid after importing tcltest's exported command.
+        const importsTest = lines.some(line => /^\s*namespace\s+import\s+(?:-force\s+)?(?:::)?tcltest::(?:\*|test)(?:\s|$)/.test(line));
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            const testMatch = line.match(/(?:::)?tcltest::test\s+([^\s]+)/);
+            const testMatch = line.match(/^\s*((?:::)?tcltest::test|test)\s+(?:"((?:\\.|[^"])*)"|\{([^}]*)\}|([^\s]+))/);
+            if (testMatch?.[1] === 'test' && !importsTest) { continue; }
 
             if (testMatch) {
-                const testName = testMatch[1].replace(/['"{}]/g, '');
+                const testName = testMatch[2] ?? testMatch[3] ?? testMatch[4];
                 const testId = `${uri.toString()}::${testName}`;
 
                 const testItem = this._testController.createTestItem(
@@ -155,7 +159,7 @@ export class TclTestProvider {
                 );
 
                 testItem.range = new vscode.Range(i, 0, i, line.length);
-                this._testData.set(testItem, { file: uri.fsPath, line: i + 1 });
+                this._testData.set(testItem, { file: uri.fsPath, line: i + 1, kind: 'tcltest' });
 
                 testFile.children.add(testItem);
             }
@@ -239,7 +243,7 @@ export class TclTestProvider {
         run.started(test);
         
         try {
-            const result = await this.executeTest(data.file, test.label);
+            const result = await this.executeTest(data.file, test.label, data.kind);
             
             if (result.status === 'passed') {
                 run.passed(test, result.duration);
@@ -256,14 +260,14 @@ export class TclTestProvider {
         }
     }
 
-    private async executeTest(file: string, testName: string): Promise<TclTestResult> {
+    private async executeTest(file: string, testName: string, kind: TclTestKind): Promise<TclTestResult> {
         return new Promise((resolve, reject) => {
             const config = vscode.workspace.getConfiguration('tcl');
             const tclPath = config.get<string>('test.tclPath', 'tclsh');
             
             // Create a test execution script and write to temp file
             // (tclsh does not support a -c flag for inline script execution)
-            const testScript = this.createTestExecutionScript(file, testName);
+            const testScript = createTestExecutionScript(file, testName, kind);
             const tmpFile = createTempTclPath('test');
             fs.writeFileSync(tmpFile, testScript, 'utf8');
 
@@ -312,17 +316,20 @@ export class TclTestProvider {
                 settle();
                 const duration = Date.now() - startTime;
 
-                // Parse the test result
+                const reported = output.split(/\r?\n/)
+                    .filter(line => line.startsWith(TEST_RESULT_PREFIX)).pop()?.slice(TEST_RESULT_PREFIX.length);
+                const status = code === 0 && (reported === 'passed' || reported === 'skipped')
+                    ? reported : 'failed';
                 const result: TclTestResult = {
                     name: testName,
                     file: file,
                     line: 0,
-                    status: code === 0 ? 'passed' : 'failed',
+                    status,
                     duration: duration
                 };
 
-                if (code !== 0) {
-                    result.message = errorOutput || output || 'Test failed';
+                if (status === 'failed') {
+                    result.message = errorOutput || output || 'Test exited without reporting a result';
                 }
 
                 // Log test output
@@ -349,48 +356,6 @@ export class TclTestProvider {
                 reject(error);
             });
         });
-    }
-
-    private createTestExecutionScript(file: string, testName: string): string {
-        // Escape file path and test name for safe TCL execution
-        const escapedFile = escapeTclString(file);
-        const escapedTestName = testName.replace(/[^a-zA-Z0-9_:]/g, '_');
-
-        // Create a script that runs a specific test
-        return `
-# Source the test file
-if {[catch {source "${escapedFile}"} error]} {
-    puts stderr "Error sourcing test file: $error"
-    exit 1
-}
-
-# Try to run the specific test
-if {[info procs ${escapedTestName}] ne ""} {
-    # It's a test procedure
-    if {[catch {${escapedTestName}} error]} {
-        puts stderr "Test ${escapedTestName} failed: $error"
-        exit 1
-    } else {
-        puts "Test ${escapedTestName} passed"
-        exit 0
-    }
-} else {
-    # Try to run with tcltest if available
-    if {[catch {package require tcltest} error] == 0} {
-        # Run specific test if it exists
-        if {[catch {::tcltest::test ${escapedTestName}} error]} {
-            puts stderr "tcltest failed: $error"
-            exit 1
-        } else {
-            puts "Test ${escapedTestName} completed"
-            exit 0
-        }
-    } else {
-        puts stderr "Test ${escapedTestName} not found and tcltest not available"
-        exit 1
-    }
-}
-`;
     }
 
     public dispose(): void {

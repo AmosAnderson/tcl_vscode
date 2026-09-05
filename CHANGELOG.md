@@ -2,6 +2,18 @@
 
 All notable changes to the "TCL Syntax" extension will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Diagnostics check source without executing document code.
+- Formatting preserves literal values, comments, numeric exponents, and quoted expression operands; malformed source is left unchanged.
+- Renames use exact symbol ranges and scope, preserving unrelated variables and literal data.
+- Procedure extraction and inlining preserve argument bindings, caller variables, and return behavior.
+- Debugging starts reliably and traces original commands, preserving source paths and program scope; evaluation replies and breakpoint removal are synchronized.
+- Test discovery recognizes imported tcltest declarations; only selected tcltest cases execute, and generated test runners retain failure status.
+- Coverage traces commands without modifying user source.
+- Project creation refuses occupied targets; generated package indexes load correctly, package tasks execute their intended actions, and explicit interpreter paths are honored.
+
 ## [0.7.1] - 2026-05-20
 
 ### Fixed

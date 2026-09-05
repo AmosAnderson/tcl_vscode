@@ -1,4 +1,4 @@
-import { countBackslashes } from '../utils/tclUtils';
+import { getExpressionWords, getScriptWords, isStaticWord, parseTclList, parseTclScript, TclCommand, TclWord } from '../utils/tclParser';
 
 export interface TclFormattingOptions {
     indentSize: number;
@@ -9,8 +9,9 @@ export interface TclFormattingOptions {
     spacesInsideBrackets: boolean;
 }
 
+/** Formats known Tcl syntax; unknown braced arguments remain literal data. */
 export class TclFormatter {
-    private options: TclFormattingOptions;
+    private readonly options: TclFormattingOptions;
 
     constructor(options: Partial<TclFormattingOptions> = {}) {
         this.options = {
@@ -24,752 +25,202 @@ export class TclFormatter {
     }
 
     format(text: string): string {
-        const normalized = this.normalizeInlineBlocks(text);
-        const rawLines = normalized.split('\n');
-        const out: string[] = [];
-        let indent = 0;
-
-        // Continuation line tracking (backslash at end of line)
-        let inContinuation = false;
-        let continuationBaseIndent = 0;
-
-        // Multi-line expr tracking (expr { ... } spanning lines)
-        let inMultiLineExpr = false;
-        let exprBraceDepth = 0;
-
-        for (const line of rawLines) {
-            let trimmed = line.trim();
-            if (trimmed === '') { out.push(''); continue; }
-
-            // --- Multi-line expr body: preserve content, only handle indentation ---
-            if (inMultiLineExpr) {
-                const lineForCounting = this.stripInlineComment(trimmed);
-                const counts = this.countBraces(lineForCounting);
-                exprBraceDepth += counts.opening - counts.closing;
-
-                if (/^}+$/.test(trimmed)) {
-                    const braceCount = trimmed.length;
-                    if (this.options.alignBraces) {
-                        for (let i = 0; i < braceCount; i++) {
-                            indent = Math.max(0, indent - 1);
-                            out.push(this.createIndent(indent) + '}');
-                        }
-                    } else {
-                        indent = Math.max(0, indent - braceCount);
-                        out.push(this.createIndent(indent) + trimmed);
-                    }
-                } else {
-                    const leadingClosings = this.countLeadingClosings(trimmed);
-                    if (leadingClosings > 0) {
-                        indent = Math.max(0, indent - leadingClosings);
-                    }
-                    out.push(this.createIndent(indent) + trimmed);
-                    const remainingClosings = Math.max(0, counts.closing - leadingClosings);
-                    indent += counts.opening - remainingClosings;
-                    if (indent < 0) indent = 0;
-                }
-
-                if (exprBraceDepth <= 0) {
-                    inMultiLineExpr = false;
-                }
-                inContinuation = false;
-                continue;
-            }
-
-            // Comment lines: preserve content unchanged, indent at current level,
-            // and do NOT count their braces (they must not affect indentation).
-            if (trimmed.startsWith('#')) {
-                const effectiveIndent = inContinuation ? continuationBaseIndent + 1 : indent;
-                out.push(this.createIndent(effectiveIndent) + trimmed);
-                // Track continuation state for comment lines
-                if (this.isContinuationLine(trimmed)) {
-                    if (!inContinuation) {
-                        inContinuation = true;
-                        continuationBaseIndent = indent;
-                    }
-                } else {
-                    inContinuation = false;
-                }
-                continue;
-            }
-
-            // Apply spacing rules early (except on pure brace lines)
-            trimmed = this.applyStructuralSpacing(trimmed);
-
-            if (!/^}+$/ .test(trimmed)) {
-                if (this.options.spacesAroundOperators) {
-                    trimmed = this.applyOperatorSpacing(trimmed);
-                }
-
-                trimmed = this.applyBraceSpacing(trimmed);
-                trimmed = this.applyBracketSpacing(trimmed);
-            }
-
-            // If the line is purely closing brace(s)
-            if (/^}+$/ .test(trimmed)) {
-                const braceCount = trimmed.length;
-
-                if (this.options.alignBraces) {
-                    // Decrease indent for each brace, emit each on its own line
-                    for (let i = 0; i < braceCount; i++) {
-                        indent = Math.max(0, indent - 1);
-                        const displayIndent = inContinuation ? continuationBaseIndent + 1 : indent;
-                        out.push(this.createIndent(displayIndent) + '}');
-                    }
-                } else {
-                    indent = Math.max(0, indent - braceCount);
-                    const displayIndent = inContinuation ? continuationBaseIndent + 1 : indent;
-                    out.push(this.createIndent(displayIndent) + trimmed);
-                }
-                // Closing braces end any active continuation
-                inContinuation = false;
-                continue;
-            }
-
-            const leadingClosings = this.countLeadingClosings(trimmed);
-
-            // If starts with closing brace(s), move indent back accordingly before emitting.
-            // This correctly handles } else { and } elseif { patterns: the leading }
-            // decreases indent, and the trailing { increases it, yielding net 0 change.
-            if (leadingClosings > 0) {
-                indent = Math.max(0, indent - leadingClosings);
-            }
-
-            // Calculate effective indent with continuation overlay
-            const effectiveIndent = inContinuation ? continuationBaseIndent + 1 : indent;
-
-            // Emit line
-            out.push(this.createIndent(effectiveIndent) + trimmed);
-
-            // Count brace delta — strip inline comments first so braces inside
-            // "; # ..." do not affect indentation.
-            const lineForCounting = this.stripInlineComment(trimmed);
-            const counts = this.countBraces(lineForCounting);
-            const remainingClosings = Math.max(0, counts.closing - leadingClosings);
-
-            // Adjust indent for each opening brace that is not closed on the same line
-            indent += counts.opening - remainingClosings;
-            if (indent < 0) indent = 0;
-
-            // Check for multi-line expr start (takes priority over continuation)
-            if (this.isMultiLineExprStart(lineForCounting)) {
-                const exprDepth = this.getExprBraceDepth(lineForCounting);
-                if (exprDepth > 0) {
-                    inMultiLineExpr = true;
-                    exprBraceDepth = exprDepth;
-                    inContinuation = false;
-                    continue;
-                }
-            }
-
-            // Update continuation state
-            if (this.isContinuationLine(trimmed)) {
-                if (!inContinuation) {
-                    inContinuation = true;
-                    continuationBaseIndent = effectiveIndent;
-                }
-            } else {
-                inContinuation = false;
-            }
-        }
-
-        return out.join('\n');
+        // Formatting must not guess repairs for malformed or incomplete source.
+        return parseTclScript(text).errors.length ? text : this.formatScript(text, 0, text.length, 0);
     }
 
-    private normalizeInlineBlocks(text: string): string {
-        // Expand single-line inline block forms into properly indented multi-line forms.
-        // Process line-by-line so that comment lines (starting with #) are never modified.
-        return text.split('\n').map(line => {
-            if (line.trimStart().startsWith('#')) {
-                return line;
-            }
-            return this.expandInlineLine(line);
+    private indent(level: number): string {
+        return this.options.useTabs ? '\t'.repeat(level) : ' '.repeat(level * this.options.indentSize);
+    }
+
+    private formatScript(text: string, start: number, end: number, level: number, trimEdges = false): string {
+        const parsed = parseTclScript(text, start, end);
+        if (parsed.errors.length) return text.slice(start, end);
+        let output = '';
+        let cursor = start;
+        for (const command of parsed.commands) {
+            let gap = text.slice(cursor, command.start);
+            if (trimEdges && cursor === start) gap = gap.replace(/^\s+/, '');
+            output += this.formatGap(gap, level, !output || output.endsWith('\n'));
+            if (!output || output.endsWith('\n')) output += this.indent(level);
+            output += this.formatCommand(text, command, level);
+            cursor = command.end;
+        }
+        let suffix = text.slice(cursor, end);
+        if (trimEdges && cursor === start) suffix = suffix.replace(/^\s+/, '');
+        output += this.formatGap(suffix, level, !output || output.endsWith('\n'));
+        // Preserve trailing spaces in words and comments, where they can escape
+        // a space or prevent a backslash from continuing onto the next line.
+        return trimEdges ? output.replace(/\n+$/, '') : output;
+    }
+
+    private formatGap(gap: string, level: number, atLineStart: boolean): string {
+        // Only separators, whitespace and complete comments occur in these gaps.
+        return gap.split('\n').map((line, index) => {
+            if (/^[ \t\r]*$/.test(line)) return '';
+            return index > 0 || atLineStart ? this.indent(level) + line.replace(/^[ \t]*/, '') : line;
         }).join('\n');
     }
 
-    private expandInlineLine(line: string): string {
-        // proc name {args}{body}
-        line = line.replace(/\bproc\s+([a-zA-Z_][a-zA-Z0-9_:]*)\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
-            (_m, name, args, body) => `proc ${name} {${args.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
-
-        // while {cond}{body}
-        line = line.replace(/\bwhile\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
-            (_m, cond, body) => `while {${cond.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
-
-        // for {init}{cond}{step}{body}
-        line = line.replace(/\bfor\s+\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}]*)\}\s*\{([^}\n]*)\}/g,
-            (_m, init, cond, step, body) =>
-                `for {${init.trim()}} {${cond.trim()}} {${step.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
-
-        // foreach varName list {body}  (list may be brace-quoted, variable, or bare word)
-        line = line.replace(/\bforeach\s+(\S+)\s+(\{[^}]*\}|\S+)\s*\{([^}\n]*)\}/g,
-            (_m, varName, list, body) => `foreach ${varName} ${list} {\n${this.createIndent(1)}${body.trim()}\n}`);
-
-        // if {cond}{body} — replace iteratively to handle chained inline ifs
-        let prev: string;
-        do {
-            prev = line;
-            line = line.replace(/\bif\s+\{([^}]*)\}\s*\{([^}\n]*)\}/g,
-                (_m, cond, body) => `if {${cond.trim()}} {\n${this.createIndent(1)}${body.trim()}\n}`);
-        } while (line !== prev);
-
-        return line;
+    private formatCommand(text: string, command: TclCommand, level: number): string {
+        const words = command.words;
+        const name = isStaticWord(words[0]) ? words[0].value.replace(/^::/, '') : '';
+        // A {*} expansion can change every subsequent argument's role.
+        const hasExpansion = words.some(word => word.expanded);
+        const scripts = new Set(hasExpansion ? [] : getScriptWords(command).map(word => word.start));
+        const expressions = new Set(hasExpansion ? [] : getExpressionWords(command).map(word => word.start));
+        let output = '';
+        for (let index = 0; index < words.length; index++) {
+            const word = words[index];
+            if (index) {
+                const gap = text.slice(words[index - 1].end, word.start);
+                output += /\\\r?\n/.test(gap) ? ' \\\n' + this.indent(level + 1) : ' ';
+            }
+            if (word.expanded) {
+                output += word.text;
+            } else if (word.kind === 'braced' && scripts.has(word.start)) {
+                const inline = (name === 'for' && (index === 1 || index === 3)) ||
+                    ((name === 'catch' || name === 'time') && !word.value.includes('\n'));
+                output += this.formatBody(text, word, level, inline);
+            } else if (word.kind === 'braced' && expressions.has(word.start)) {
+                const value = this.formatExpression(word.value);
+                output += !value ? '{}' : value.includes('\n') ? '{' + value + '}' : this.paddedBraces(value);
+            } else if (!hasExpansion && name === 'proc' && index === 2 && word.kind === 'braced') {
+                const params = parseTclList(text, word.contentStart, word.contentEnd);
+                output += params.errors.length ? word.text : !params.words.length ? '{}' :
+                    this.paddedBraces(text.slice(params.words[0].start, params.words[params.words.length - 1].end));
+            } else if (name === 'expr' && expressions.has(word.start) && word.kind === 'bare') {
+                // expr concatenates arguments; control commands do not.
+                output += this.formatExpression(word.text);
+            } else {
+                output += this.formatSubstitutions(text, word);
+            }
+        }
+        return output;
     }
 
-    private applyOperatorSpacing(line: string): string {
-        const spaceOps = (segment: string): string => {
-            // Add spaces around common operators if not already spaced
-            // Handle > < == != + - * / % inside expressions / conditions
-            segment = segment.replace(/([A-Za-z0-9_\])])([+\-*/>%<]=?|==|!=)([A-Za-z0-9_[$"'@])/g, (_m, a, op, b) => `${a} ${op} ${b}`);
-            // Collapse multiple spaces
-            segment = segment.replace(/\s{2,}/g, ' ');
-            return segment;
-        };
+    private formatBody(text: string, word: TclWord, level: number, inline: boolean): string {
+        if (parseTclScript(text, word.contentStart, word.contentEnd).errors.length) return word.text;
+        const body = this.formatScript(text, word.contentStart, word.contentEnd, inline ? 0 : level + 1, true);
+        if (!body) return '{}';
+        if (inline && !body.includes('\n')) return this.paddedBraces(body);
+        if (!this.options.alignBraces && body.endsWith('}')) return '{\n' + body + '}';
+        return '{\n' + body + '\n' + this.indent(level) + '}';
+    }
 
-        // Inside [expr ...]
-        line = line.replace(/\[expr\s+([^\]]+)\]/g, (_m, inner) => {
-            return `[expr ${spaceOps(inner.trim())}]`;
-        });
+    private paddedBraces(value: string): string {
+        return this.options.spacesInsideBraces ? '{ ' + value + ' }' : '{' + value + '}';
+    }
 
-        // Only apply operator spacing inside braces that follow control-flow keywords
-        // This prevents breaking regex patterns like {\d{3}} or list values
-        const conditionKeywords = /\b(if|while|for|foreach|switch|elseif|expr|catch|try)\s*$/i;
-        
-        // Process each brace group, only spacing those after keywords
+    private formatSubstitutions(text: string, word: TclWord): string {
+        if (word.kind === 'braced' || !word.commandSubstitutions.length) return word.text;
         let result = '';
-        let lastIndex = 0;
-        const braceRegex = /\{([^{}]*)\}/g;
-        let match;
-        
-        while ((match = braceRegex.exec(line)) !== null) {
-            const precedingText = line.substring(0, match.index);
-            result += line.substring(lastIndex, match.index);
-            
-            const inner = match[1];
-            const trimmed = inner.trim();
-            
-            // Only apply operator spacing if preceded by a control-flow keyword
-            if (conditionKeywords.test(precedingText.trimEnd())) {
-                result += `{${spaceOps(trimmed)}}`;
+        let cursor = word.start;
+        for (const sub of word.commandSubstitutions) {
+            result += text.slice(cursor, sub.start);
+            const parsed = parseTclScript(text, sub.start + 1, sub.end - 1);
+            if (parsed.errors.length || !parsed.commands.length) {
+                result += text.slice(sub.start, sub.end);
             } else {
-                result += match[0]; // Keep original
+                const inner = this.formatScript(text, sub.start + 1, sub.end - 1, 0, true);
+                const tail = text.slice(parsed.commands[parsed.commands.length - 1].end, sub.end - 1);
+                const padding = this.options.spacesInsideBrackets ? ' ' : '';
+                // Closing brackets must not be swallowed by a trailing comment.
+                result += '[' + padding + inner + (tail.includes('#') ? '\n' : padding) + ']';
             }
-            
-            lastIndex = match.index + match[0].length;
+            cursor = sub.end;
         }
-        
-        result += line.substring(lastIndex);
+        return result + text.slice(cursor, word.end);
+    }
+
+    private formatExpression(expression: string): string {
+        type Kind = 'space' | 'operand' | 'operator' | 'open' | 'close';
+        const tokens: { text: string; kind: Kind }[] = [];
+        const prefix = 'expr ';
+        const substitutions = new Map<number, number>();
+        for (const command of parseTclScript(prefix + expression).commands) {
+            for (const word of command.words) {
+                for (const sub of word.commandSubstitutions) {
+                    substitutions.set(sub.start - prefix.length, sub.end - prefix.length);
+                }
+            }
+        }
+        const skipVariable = (start: number): number => {
+            let index = start + 1;
+            if (expression[index] === '{') {
+                const close = expression.indexOf('}', index + 1);
+                return close < 0 ? expression.length : close + 1;
+            }
+            while (index < expression.length) {
+                const character = String.fromCodePoint(expression.codePointAt(index)!);
+                if (!/[\p{L}\p{N}_:]/u.test(character)) break;
+                index += character.length;
+            }
+            if (expression[index] === '(') {
+                index++;
+                while (index < expression.length && expression[index] !== ')') {
+                    if (expression[index] === '\\') index += 2;
+                    else if (substitutions.has(index)) index = substitutions.get(index)!;
+                    else if (expression[index] === '$') index = skipVariable(index);
+                    else index++;
+                }
+                if (expression[index] === ')') index++;
+            }
+            return index;
+        };
+        let index = 0;
+        while (index < expression.length) {
+            const start = index;
+            const ch = expression[index];
+            let kind: Kind = 'operand';
+            if (/\s/.test(ch)) {
+                while (index < expression.length && /\s/.test(expression[index])) index++;
+                kind = 'space';
+            } else if (substitutions.has(index)) {
+                index = substitutions.get(index)!;
+            } else if (ch === '$') {
+                index = skipVariable(index);
+            } else if (ch === '"' || ch === '{') {
+                let depth = 1;
+                index++;
+                while (index < expression.length && depth > 0) {
+                    if (expression[index] === '\\') index += 2;
+                    else if (ch === '"' && substitutions.has(index)) index = substitutions.get(index)!;
+                    else if (expression[index] === (ch === '"' ? '"' : '}')) { depth--; index++; }
+                    else if (ch === '{' && expression[index] === '{') { depth++; index++; }
+                    else index++;
+                }
+            } else if (ch === '\\') {
+                index = Math.min(index + 2, expression.length);
+            } else {
+                const number = expression.slice(index).match(/^(?:0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)(?![\w.])/);
+                const operator = expression.slice(index).match(/^(?:\*\*|<<|>>|<=|>=|==|!=|&&|\|\||[+\-*/%<>&|^?:!~])/);
+                if (number) index += number[0].length;
+                else if (operator) { index += operator[0].length; kind = 'operator'; }
+                else if (ch === '(' || ch === ')') { index++; kind = ch === '(' ? 'open' : 'close'; }
+                else {
+                    index++;
+                    while (index < expression.length && /[\w:]/.test(expression[index])) index++;
+                }
+            }
+            tokens.push({ text: expression.slice(start, index), kind });
+        }
+        while (tokens[0]?.kind === 'space' && !tokens[0].text.includes('\n')) tokens.shift();
+        while (tokens[tokens.length - 1]?.kind === 'space' && !tokens[tokens.length - 1].text.includes('\n')) tokens.pop();
+        if (!this.options.spacesAroundOperators) return tokens.map(token => token.text).join('');
+        let result = '';
+        let previous: typeof tokens[number] | undefined;
+        for (let i = 0; i < tokens.length; i++) {
+            const token = tokens[i];
+            if (token.kind === 'operator' && previous &&
+                (previous.kind === 'operand' || previous.kind === 'close') &&
+                token.text !== '!' && token.text !== '~') {
+                if (result && !/\s$/.test(result)) result += ' ';
+                result += token.text;
+                if (tokens[i + 1] && tokens[i + 1].kind !== 'space') result += ' ';
+            } else result += token.text;
+            if (token.kind !== 'space') previous = token;
+        }
         return result;
-    }
-
-    private applyBraceSpacing(line: string): string {
-        // Don't apply spacing inside string literals
-        const result: string[] = [];
-        let inString = false;
-        let stringChar = '';
-        let i = 0;
-
-        while (i < line.length) {
-            const char = line[i];
-
-            // Track string state
-            if (char === '"' || char === "'") {
-                // Count consecutive backslashes before this character
-                let backslashCount = 0;
-                let checkPos = i - 1;
-                while (checkPos >= 0 && line[checkPos] === '\\') {
-                    backslashCount++;
-                    checkPos--;
-                }
-                // Quote is escaped only if odd number of backslashes before it
-                const isEscaped = backslashCount % 2 === 1;
-
-                if (!isEscaped) {
-                    if (!inString) {
-                        inString = true;
-                        stringChar = char;
-                    } else if (char === stringChar) {
-                        inString = false;
-                        stringChar = '';
-                    }
-                }
-                result.push(char);
-                i++;
-                continue;
-            }
-
-            // If in string, don't modify
-            if (inString) {
-                result.push(char);
-                i++;
-                continue;
-            }
-
-            // Process braces outside strings
-            if (char === '{') {
-                const closeIdx = this.findMatchingBraceInString(line, i);
-                if (closeIdx !== -1) {
-                    const inner = line.substring(i + 1, closeIdx);
-                    const trimmed = inner.trim();
-                    if (!trimmed) {
-                        result.push('{}');
-                    } else if (this.options.spacesInsideBraces && this.shouldAddSpacesInsideBrace(result.join(''))) {
-                        result.push(`{ ${trimmed} }`);
-                    } else {
-                        result.push(`{${trimmed}}`);
-                    }
-                    i = closeIdx + 1;
-                    continue;
-                }
-            }
-
-            result.push(char);
-            i++;
-        }
-
-        return result.join('');
-    }
-
-    private applyBracketSpacing(line: string): string {
-        // Don't apply spacing inside string literals
-        const result: string[] = [];
-        let inString = false;
-        let stringChar = '';
-        let i = 0;
-
-        while (i < line.length) {
-            const char = line[i];
-
-            // Track string state
-            if (char === '"' || char === "'") {
-                // Count consecutive backslashes before this character
-                let backslashCount = 0;
-                let checkPos = i - 1;
-                while (checkPos >= 0 && line[checkPos] === '\\') {
-                    backslashCount++;
-                    checkPos--;
-                }
-                // Quote is escaped only if odd number of backslashes before it
-                const isEscaped = backslashCount % 2 === 1;
-
-                if (!isEscaped) {
-                    if (!inString) {
-                        inString = true;
-                        stringChar = char;
-                    } else if (char === stringChar) {
-                        inString = false;
-                        stringChar = '';
-                    }
-                }
-                result.push(char);
-                i++;
-                continue;
-            }
-
-            // If in string, don't modify
-            if (inString) {
-                result.push(char);
-                i++;
-                continue;
-            }
-
-            // Process brackets outside strings
-            if (char === '[') {
-                const closeIdx = this.findMatchingBracketInString(line, i);
-                if (closeIdx !== -1) {
-                    const inner = line.substring(i + 1, closeIdx);
-                    const trimmed = inner.trim();
-                    if (!trimmed) {
-                        result.push('[]');
-                    } else if (this.options.spacesInsideBrackets) {
-                        result.push(`[ ${trimmed} ]`);
-                    } else {
-                        result.push(`[${trimmed}]`);
-                    }
-                    i = closeIdx + 1;
-                    continue;
-                }
-            }
-
-            result.push(char);
-            i++;
-        }
-
-        return result.join('');
-    }
-
-    /**
-     * Determines if spaces should be added inside braces based on context.
-     * Only adds spaces after control-flow keywords (if, while, for, foreach, switch, elseif, expr)
-     * where the braces contain conditions/expressions.
-     * Does NOT add spaces for value contexts like regex patterns, string literals, list values, etc.
-     */
-    private shouldAddSpacesInsideBrace(precedingText: string): boolean {
-        // Get the text immediately before the brace (trimmed)
-        const trimmed = precedingText.trimEnd();
-        
-        // Keywords after which condition/expression braces should have spaces
-        const conditionKeywords = /\b(if|while|for|foreach|switch|elseif|expr|catch|try)\s*$/i;
-        
-        // Check if preceded by a control-flow keyword
-        if (conditionKeywords.test(trimmed)) {
-            return true;
-        }
-        
-        // Also allow spaces after closing brace (for chained conditions like "} {")
-        // This handles the body block after a condition
-        if (/}\s*$/.test(trimmed)) {
-            return true;
-        }
-        
-        // Allow spaces in proc argument and body braces
-        // Matches: "proc name" or "proc name {args}"
-        if (/\bproc\s+[^\s{]+\s*$/.test(trimmed) || /\bproc\s+[^\s{]+\s+\{[^}]*\}\s*$/.test(trimmed)) {
-            return true;
-        }
-        
-        // For all other cases (regex patterns, string values, list literals, etc.), don't add spaces
-        return false;
-    }
-
-    private findMatchingBraceInString(str: string, openIdx: number): number {
-        let depth = 0;
-        let inString = false;
-        let stringChar = '';
-
-        for (let i = openIdx; i < str.length; i++) {
-            const char = str[i];
-
-            if (char === '"' || char === "'") {
-                // Count consecutive backslashes before this character
-                let backslashCount = 0;
-                let checkPos = i - 1;
-                while (checkPos >= 0 && str[checkPos] === '\\') {
-                    backslashCount++;
-                    checkPos--;
-                }
-                // Quote is escaped only if odd number of backslashes before it
-                const isEscaped = backslashCount % 2 === 1;
-
-                if (!isEscaped) {
-                    if (!inString) {
-                        inString = true;
-                        stringChar = char;
-                    } else if (char === stringChar) {
-                        inString = false;
-                        stringChar = '';
-                    }
-                }
-                continue;
-            }
-
-            if (!inString) {
-                if (char === '{') {
-                    depth++;
-                } else if (char === '}') {
-                    depth--;
-                    if (depth === 0) {
-                        return i;
-                    }
-                }
-            }
-        }
-        return -1;
-    }
-
-    private findMatchingBracketInString(str: string, openIdx: number): number {
-        let depth = 0;
-        let inString = false;
-        let stringChar = '';
-
-        for (let i = openIdx; i < str.length; i++) {
-            const char = str[i];
-
-            if (char === '"' || char === "'") {
-                // Count consecutive backslashes before this character
-                let backslashCount = 0;
-                let checkPos = i - 1;
-                while (checkPos >= 0 && str[checkPos] === '\\') {
-                    backslashCount++;
-                    checkPos--;
-                }
-                // Quote is escaped only if odd number of backslashes before it
-                const isEscaped = backslashCount % 2 === 1;
-
-                if (!isEscaped) {
-                    if (!inString) {
-                        inString = true;
-                        stringChar = char;
-                    } else if (char === stringChar) {
-                        inString = false;
-                        stringChar = '';
-                    }
-                }
-                continue;
-            }
-
-            if (!inString) {
-                if (char === '[') {
-                    depth++;
-                } else if (char === ']') {
-                    depth--;
-                    if (depth === 0) {
-                        return i;
-                    }
-                }
-            }
-        }
-        return -1;
-    }
-
-    private applyStructuralSpacing(line: string): string {
-        if (!line) {
-            return line;
-        }
-
-        // Ensure closing brace before else/elseif has spacing
-        line = line.replace(/}\s*(else|elseif|finally|catch)\b/gi, '} $1');
-
-        // Ensure keywords that start blocks have a space before the opening brace
-        line = line.replace(/\b(if|elseif|else|switch|while|for|foreach|try|catch|finally)\s*\{/gi, (_m, kw) => `${kw} {`);
-
-        // Ensure procedure definitions have spacing before argument braces
-        line = line.replace(/\bproc\s+([^\s{]+)\s*\{/gi, (_m, name) => `proc ${name} {`);
-
-        // Separate adjacent braces
-        line = line.replace(/}\s*\{/g, '} {');
-
-        // Ensure tokens directly before an opening brace are separated by a space,
-        // but only if we're not inside a brace-quoted string (to preserve regex quantifiers like \d{3})
-        line = this.addSpaceBeforeTopLevelBraces(line);
-
-        return line;
-    }
-
-    /**
-     * Adds a space before opening braces that follow alphanumeric characters,
-     * but only at the "top level" (not inside brace-quoted content like regex patterns).
-     */
-    private addSpaceBeforeTopLevelBraces(line: string): string {
-        const result: string[] = [];
-        let braceDepth = 0;
-        
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            
-            if (char === '{') {
-                // Check if we should add space before this brace
-                // Only add space at top level (braceDepth === 0) when preceded by alphanumeric/]/
-                if (braceDepth === 0 && i > 0) {
-                    const prevChar = line[i - 1];
-                    // If preceded by alphanumeric, ), or ] and not already spaced
-                    if (/[A-Za-z0-9_\])]/.test(prevChar)) {
-                        // Check if there's already a space (shouldn't match but be safe)
-                        if (result.length > 0 && result[result.length - 1] !== ' ') {
-                            result.push(' ');
-                        }
-                    }
-                }
-                braceDepth++;
-                result.push(char);
-            } else if (char === '}') {
-                braceDepth = Math.max(0, braceDepth - 1);
-                result.push(char);
-            } else {
-                result.push(char);
-            }
-        }
-        
-        return result.join('');
-    }
-
-    /**
-     * Strips an inline TCL comment ("; # ...") from a line for the purposes of
-     * brace counting.  A "#" starts a comment only when it appears as the first
-     * non-whitespace token of a new command, which on a single line means after
-     * a ";" separator.  Strings and nested brackets/braces are respected so that
-     * a literal semicolon inside a string or brace group is not treated as a
-     * command separator.
-     */
-    private stripInlineComment(line: string): string {
-        let inString = false;
-        let stringChar = '';
-        let braceDepth = 0;
-        let bracketDepth = 0;
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-
-            // Track string boundaries (double-quote strings only; TCL single-quotes
-            // are not special but we mirror the logic used elsewhere in this class).
-            if ((char === '"' || char === "'") && !inString) {
-                inString = true;
-                stringChar = char;
-                continue;
-            }
-            if (inString && char === stringChar) {
-                let backslashes = 0;
-                let k = i - 1;
-                while (k >= 0 && line[k] === '\\') { backslashes++; k--; }
-                if (backslashes % 2 === 0) {
-                    inString = false;
-                    stringChar = '';
-                }
-                continue;
-            }
-            if (inString) { continue; }
-
-            if (char === '{') { braceDepth++; }
-            else if (char === '}') { braceDepth = Math.max(0, braceDepth - 1); }
-            else if (char === '[') { bracketDepth++; }
-            else if (char === ']') { bracketDepth = Math.max(0, bracketDepth - 1); }
-
-            // A ";" at the top level is a command separator.  If a "#" follows
-            // (with optional whitespace), everything from the ";" onward is a comment.
-            if (char === ';' && braceDepth === 0 && bracketDepth === 0) {
-                let j = i + 1;
-                while (j < line.length && line[j] === ' ') { j++; }
-                if (j < line.length && line[j] === '#') {
-                    return line.substring(0, i);
-                }
-            }
-        }
-        return line;
-    }
-
-    private createIndent(level: number): string {
-        if (this.options.useTabs) {
-            return '\t'.repeat(level);
-        } else {
-            return ' '.repeat(level * this.options.indentSize);
-        }
-    }
-
-    private countBraces(line: string): { opening: number; closing: number } {
-        let opening = 0;
-        let closing = 0;
-        let inString = false;
-        let stringChar = '';
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-
-            // Handle escaped characters (odd number of preceding backslashes)
-            if (countBackslashes(line, i) % 2 === 1) {
-                continue;
-            }
-
-            // Handle quoted strings
-            if ((char === '"' || char === "'") && !inString) {
-                inString = true;
-                stringChar = char;
-            } else if (inString && char === stringChar) {
-                if (countBackslashes(line, i) % 2 === 0) {
-                    inString = false;
-                    stringChar = '';
-                }
-            }
-
-            // Count braces outside of strings
-            if (!inString) {
-                if (char === '{') {
-                    opening++;
-                } else if (char === '}') {
-                    closing++;
-                }
-            }
-        }
-
-        return { opening, closing };
-    }
-
-    private countLeadingClosings(line: string): number {
-        let count = 0;
-        let inString = false;
-        let stringChar = '';
-
-        for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-
-            // Handle escaped characters (odd number of preceding backslashes)
-            if (countBackslashes(line, i) % 2 === 1) {
-                continue;
-            }
-
-            if ((char === '"' || char === '\'') && !inString) {
-                inString = true;
-                stringChar = char;
-            } else if (inString && char === stringChar) {
-                if (countBackslashes(line, i) % 2 === 0) {
-                    inString = false;
-                    stringChar = '';
-                }
-            }
-
-            if (inString) {
-                break;
-            }
-
-            if (char === '}') {
-                count++;
-                continue;
-            }
-
-            if (!/\s/.test(char)) {
-                break;
-            }
-        }
-
-        return count;
-    }
-
-    /**
-     * Detects whether a line ends with a backslash continuation.
-     * A line is a continuation if it ends with an odd number of backslashes
-     * (even number means escaped backslashes, not continuation).
-     */
-    private isContinuationLine(line: string): boolean {
-        const trimmed = line.trimEnd();
-        if (trimmed.length === 0 || !trimmed.endsWith('\\')) {
-            return false;
-        }
-        let count = 0;
-        for (let i = trimmed.length - 1; i >= 0; i--) {
-            if (trimmed[i] === '\\') {
-                count++;
-            } else {
-                break;
-            }
-        }
-        return count % 2 === 1;
-    }
-
-    /**
-     * Detects whether a line starts a multi-line expr block.
-     * Matches `expr {` where the opening brace is not closed on the same line.
-     */
-    private isMultiLineExprStart(line: string): boolean {
-        const match = line.match(/\bexpr\s*\{/);
-        if (!match || match.index === undefined) {
-            return false;
-        }
-        // Count braces from the expr keyword onward to check if the block closes
-        const afterExpr = line.substring(match.index);
-        const counts = this.countBraces(afterExpr);
-        return counts.opening > counts.closing;
-    }
-
-    /**
-     * Calculates the net brace depth opened by an expr block on a single line.
-     * Used to initialize the depth counter for multi-line expr tracking.
-     */
-    private getExprBraceDepth(line: string): number {
-        const match = line.match(/\bexpr\s*\{/);
-        if (!match || match.index === undefined) {
-            return 0;
-        }
-        const afterExpr = line.substring(match.index);
-        const counts = this.countBraces(afterExpr);
-        return counts.opening - counts.closing;
     }
 }

@@ -222,13 +222,29 @@ export class TclInterpreterManager {
         return 0;
     }
 
-    private async loadConfiguration(): Promise<void> {
-        const config = vscode.workspace.getConfiguration('tcl');
-        const selectedPath = config.get<string>('interpreter.path');
+    private async loadConfiguration(
+        selectedPath = vscode.workspace.getConfiguration('tcl').get<string>('interpreter.path')
+    ): Promise<void> {
 
+        this.currentInterpreter = null;
+        this.interpreters.forEach(interpreter => interpreter.isDefault = false);
         if (selectedPath) {
-            // Find the interpreter with this path
             this.currentInterpreter = this.interpreters.find(i => i.path === selectedPath) || null;
+            if (!this.currentInterpreter) {
+                const version = await this.getTclVersion(selectedPath);
+                this.currentInterpreter = {
+                    path: selectedPath,
+                    version: version || 'unknown',
+                    name: `Configured: ${path.basename(selectedPath)}`,
+                    type: 'custom',
+                    isDefault: true
+                };
+                this.interpreters.push(this.currentInterpreter);
+                if (!version) {
+                    this.outputChannel.appendLine(`Could not probe configured interpreter: ${selectedPath}`);
+                }
+            }
+            this.currentInterpreter.isDefault = true;
         }
 
         if (!this.currentInterpreter && this.interpreters.length > 0) {

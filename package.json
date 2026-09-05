@@ -93,7 +93,7 @@
         "tcl.diagnostics.useTclsh": {
           "type": "boolean",
           "default": true,
-          "description": "Use tclsh for advanced syntax validation"
+          "description": "Use tclsh to check command completeness without executing document code"
         },
         "tcl.repl.tclPath": {
           "type": "string",

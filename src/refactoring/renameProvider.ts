@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { TCL_BUILTIN_COMMANDS } from '../data/tclCommands';
 import { SymbolTableCache } from '../analysis/symbolTableCache';
+import { DocumentSymbolTable } from '../analysis/symbolTable';
+import { commandContexts, procedureDeclarations, resolveProcedureName } from '../analysis/procedures';
+import { isStaticWord } from '../utils/tclParser';
 
 export class TclRenameProvider implements vscode.RenameProvider {
     
@@ -53,9 +56,9 @@ export class TclRenameProvider implements vscode.RenameProvider {
         const edit = new vscode.WorkspaceEdit();
         
         if (symbolType === 'procedure') {
-            await this.renameProcedure(document, oldName, newName, edit);
+            await this.renameProcedure(document, wordRange.start, oldName, newName, edit);
         } else if (symbolType === 'variable') {
-            await this.renameVariable(document, oldName, newName, edit);
+            await this.renameVariable(document, wordRange.start, oldName, newName, edit);
         } else if (symbolType === 'namespace') {
             await this.renameNamespace(document, oldName, newName, edit);
         }
@@ -98,7 +101,7 @@ export class TclRenameProvider implements vscode.RenameProvider {
 
     private isValidTclIdentifier(name: string): boolean {
         // TCL identifiers can contain letters, digits, underscores, and colons (for namespaces)
-        return /^[a-zA-Z_:][a-zA-Z0-9_:]*$/.test(name);
+        return /^[\p{L}\p{M}_:][\p{L}\p{M}\p{N}_:]*$/u.test(name);
     }
 
     private escapeRegex(lit: string): string {
@@ -186,6 +189,14 @@ export class TclRenameProvider implements vscode.RenameProvider {
         symbolName: string
     ): Promise<string | null> {
         
+        const table = this.getSymbolTable(document);
+        const symbol = table.getSymbolAt(wordStartPosition);
+        if (symbol) return symbol.kind === 'procedure' ? 'procedure' : 'variable';
+        const offset = document.offsetAt(wordStartPosition);
+        if (commandContexts(document.getText()).some(context => {
+            const command = context.command.words[0];
+            return isStaticWord(command) && command.contentStart <= offset && offset <= command.contentEnd;
+        })) return 'procedure';
         const line = document.lineAt(wordStartPosition.line);
         const lineText = line.text;
         const wordStart = wordStartPosition.character;
@@ -243,182 +254,67 @@ export class TclRenameProvider implements vscode.RenameProvider {
 
     private async renameProcedure(
         document: vscode.TextDocument,
+        position: vscode.Position,
         oldName: string,
         newName: string,
         edit: vscode.WorkspaceEdit
     ): Promise<void> {
-        // Collect unique replacement ranges to avoid overlapping/duplicate edits.
-        interface Replacement { uri: vscode.Uri; range: vscode.Range; }
-        const seen = new Set<string>();
-        const replacements: Replacement[] = [];
-        const escaped = this.escapeRegex(oldName);
-
-        const addReplacement = (uri: vscode.Uri, startPos: vscode.Position, endPos: vscode.Position) => {
-            const key = `${uri.toString()}|${startPos.line}|${startPos.character}|${endPos.character}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                replacements.push({ uri, range: new vscode.Range(startPos, endPos) });
-            }
-        };
-
-        const scanDocument = (doc: vscode.TextDocument) => {
-            const lines = doc.getText().split('\n');
-            for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-                const line = lines[lineNum];
-                // Definitions
-                const procDefPattern = new RegExp(`\\bproc\\s+${escaped}\\b`, 'g');
-                let match: RegExpExecArray | null;
-                while ((match = procDefPattern.exec(line)) !== null) {
-                    const startPos = new vscode.Position(lineNum, match.index + match[0].lastIndexOf(oldName));
-                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                    addReplacement(doc.uri, startPos, endPos);
-                }
-                // Calls (allow after whitespace, semicolon, brace, bracket)
-                const procCallPattern = new RegExp(`(^|[\n\r\t ;\\[{])${escaped}\\b`, 'g');
-                while ((match = procCallPattern.exec(line)) !== null) {
-                    // Check if this is part of a proc definition by looking at more context
-                    const lineStart = Math.max(0, match.index - 10);
-                    const context = line.substring(lineStart, match.index).toLowerCase();
-                    if (/proc\s+$/.test(context)) continue;
-                    const offset = match[1] ? match[1].length : 0;
-                    const startPos = new vscode.Position(lineNum, match.index + offset);
-                    const endPos = new vscode.Position(lineNum, startPos.character + oldName.length);
-                    addReplacement(doc.uri, startPos, endPos);
-                }
-            }
-        };
-
-        // Scan current document (even if unsaved / untitled)
-        scanDocument(document);
-
-        // Scan workspace files
-        const files = await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}');
-        for (const file of files) {
-            if (file.toString() === document.uri.toString()) continue;
-            const doc = await vscode.workspace.openTextDocument(file);
-            scanDocument(doc);
+        const documents = [document];
+        for (const uri of await vscode.workspace.findFiles('**/*.{tcl,tk,tm,test}', '**/node_modules/**')) {
+            if (uri.toString() !== document.uri.toString()) documents.push(await vscode.workspace.openTextDocument(uri));
         }
-
-        // Apply edits
-        for (const rep of replacements) {
-            edit.replace(rep.uri, rep.range, newName);
+        const definitions = new Set(documents.flatMap(doc => procedureDeclarations(doc.getText()).map(p => p.qualifiedName)));
+        const cursor = document.offsetAt(position);
+        const occurrences: { doc: vscode.TextDocument; start: number; end: number; name: string; target: string }[] = [];
+        for (const doc of documents) {
+            const text = doc.getText();
+            const declarations = procedureDeclarations(text);
+            for (const declaration of declarations) {
+                const word = declaration.command.words[1];
+                occurrences.push({ doc, start: word.contentStart, end: word.contentEnd, name: word.value, target: declaration.qualifiedName });
+            }
+            for (const context of commandContexts(text)) {
+                const word = context.command.words[0];
+                if (!isStaticWord(word)) continue;
+                const target = resolveProcedureName(word.value, context.namespace, definitions);
+                if (target) occurrences.push({ doc, start: word.contentStart, end: word.contentEnd, name: word.value, target });
+            }
         }
+        const selected = occurrences.find(o => o.doc === document && o.start <= cursor && cursor <= o.end);
+        if (!selected) throw new Error('Cannot resolve a procedure at the selected position');
+        if (newName.includes('::')) throw new Error('Rename the procedure within its current namespace; moving namespaces is a separate refactoring');
+        for (const occurrence of occurrences) {
+            if (occurrence.target !== selected.target) continue;
+            const shortName = occurrence.name.slice(occurrence.name.lastIndexOf('::') + 2);
+            const length = occurrence.name.includes('::') ? shortName.length : occurrence.name.length;
+            edit.replace(occurrence.doc.uri, new vscode.Range(occurrence.doc.positionAt(occurrence.end - length), occurrence.doc.positionAt(occurrence.end)), newName);
+        }
+    }
+
+    private getSymbolTable(document: vscode.TextDocument): DocumentSymbolTable {
+        if (this.symbolTableCache) return this.symbolTableCache.getOrCreate(document);
+        const table = new DocumentSymbolTable(document);
+        table.parse();
+        return table;
     }
 
     private async renameVariable(
         document: vscode.TextDocument,
+        position: vscode.Position,
         oldName: string,
         newName: string,
         edit: vscode.WorkspaceEdit
     ): Promise<void> {
-
-        // Use scope-aware symbol table when available for precise scoping
-        if (this.symbolTableCache) {
-            const table = this.symbolTableCache.getOrCreate(document);
-            // Find the position of the cursor's variable in the document to determine scope
-            const scopedRanges = this.findScopedVariableRanges(document, table, oldName);
-            if (scopedRanges.length > 0) {
-                for (const range of scopedRanges) {
-                    edit.replace(document.uri, range, newName);
-                }
-                return;
-            }
-        }
-
-        // Fallback: scan the current file with regex patterns
-        this.renameVariableFallback(document, oldName, newName, edit);
-    }
-
-    /**
-     * Use the symbol table to find all ranges for a variable within its scope.
-     * Collects definition + references from the symbol entry.
-     */
-    private findScopedVariableRanges(
-        document: vscode.TextDocument,
-        table: import('../analysis/symbolTable').DocumentSymbolTable,
-        varName: string
-    ): vscode.Range[] {
-        const ranges: vscode.Range[] = [];
-        this.collectScopedRanges(table.getRoot(), varName, ranges);
-        return ranges;
-    }
-
-    private collectScopedRanges(
-        scope: import('../analysis/symbolTable').ScopeNode,
-        varName: string,
-        ranges: vscode.Range[]
-    ): void {
-        for (const sym of scope.symbols) {
-            if (sym.name === varName) {
-                ranges.push(sym.range);
-                ranges.push(...sym.references);
-            }
-        }
-        for (const child of scope.children) {
-            this.collectScopedRanges(child, varName, ranges);
-        }
-    }
-
-    private renameVariableFallback(
-        document: vscode.TextDocument,
-        oldName: string,
-        newName: string,
-        edit: vscode.WorkspaceEdit
-    ): void {
-
-        // For variables, we typically only rename within the current file/scope
-        // unless it's a global variable
-
-        // Track replacements to avoid duplicates
-        const seen = new Set<string>();
-        const addReplacement = (lineNum: number, startChar: number, endChar: number) => {
-            const key = `${lineNum}|${startChar}|${endChar}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                const startPos = new vscode.Position(lineNum, startChar);
-                const endPos = new vscode.Position(lineNum, endChar);
-                edit.replace(document.uri, new vscode.Range(startPos, endPos), newName);
-            }
-        };
-
-        const text = document.getText();
-        const lines = text.split('\n');
-        const escaped = this.escapeRegex(oldName);
-
-        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
-            const line = lines[lineNum];
-
-            // Find variable assignments (set command)
-            const setPattern = new RegExp(`\\bset\\s+(${escaped})\\b`, 'g');
-            let match;
-            while ((match = setPattern.exec(line)) !== null) {
-                const startChar = match.index + match[0].indexOf(oldName);
-                addReplacement(lineNum, startChar, startChar + oldName.length);
-            }
-
-            // Find variable references ($ prefix) - but not array references
-            const varRefPattern = new RegExp(`\\$${escaped}\\b`, 'g');
-            while ((match = varRefPattern.exec(line)) !== null) {
-                const startChar = match.index + 1; // Skip the $
-                addReplacement(lineNum, startChar, startChar + oldName.length);
-            }
-
-            // Find array variable references
-            const arrayRefPattern = new RegExp(`\\$${escaped}\\(`, 'g');
-            while ((match = arrayRefPattern.exec(line)) !== null) {
-                const startChar = match.index + 1; // Skip the $
-                addReplacement(lineNum, startChar, startChar + oldName.length);
-            }
-
-            // Find other variable-related commands (global, variable, upvar, etc.)
-            const varCmdPattern = new RegExp(`\\b(global|variable|upvar)\\s+.*\\b${escaped}\\b`, 'g');
-            while ((match = varCmdPattern.exec(line)) !== null) {
-                const nameMatch = line.substring(match.index).match(new RegExp(`\\b${escaped}\\b`));
-                if (nameMatch && nameMatch.index !== undefined) {
-                    const startChar = match.index + nameMatch.index;
-                    addReplacement(lineNum, startChar, startChar + oldName.length);
-                }
-            }
+        const table = this.getSymbolTable(document);
+        const symbol = table.getSymbolAt(position);
+        if (!symbol || symbol.kind === 'procedure') throw new Error('Cannot resolve a variable binding at the selected position');
+        if (newName.includes('::')) throw new Error('Renaming a variable cannot change its scope');
+        const ranges = [symbol.range, ...symbol.references];
+        for (const range of ranges) {
+            const original = document.getText(range);
+            const prefixLength = original.includes('::') ? original.lastIndexOf('::') + 2 : 0;
+            const start = document.positionAt(document.offsetAt(range.start) + prefixLength);
+            edit.replace(document.uri, new vscode.Range(start, range.end), newName);
         }
     }
 

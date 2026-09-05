@@ -620,6 +620,7 @@ namespace eval ::${packageName} {
         return "Hello, $name from ${packageName}!"
     }
 }
+package provide ${packageName} ${packageVersion}
 `;
             await fs.promises.writeFile(mainTclPath, mainTclContent);
 

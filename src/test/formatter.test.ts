@@ -9,21 +9,21 @@ suite('TCL Formatter Tests', () => {
     });
 
     test('Should format basic if statement', () => {
-        const input = 'if {$x>0}{puts "positive"}';
+        const input = 'if {$x>0} {puts "positive"}';
         const expected = 'if { $x > 0 } {\n    puts "positive"\n}';
         const result = formatter.format(input);
         assert.strictEqual(result, expected);
     });
 
     test('Should format procedure definition', () => {
-        const input = 'proc test {a b}{return [expr $a+$b]}';
+        const input = 'proc test {a b} {return [expr $a+$b]}';
         const expected = 'proc test { a b } {\n    return [expr $a + $b]\n}';
         const result = formatter.format(input);
         assert.strictEqual(result, expected);
     });
 
     test('Should handle nested braces', () => {
-        const input = 'if {$x>0}{if {$y>0}{puts "both positive"}}';
+        const input = 'if {$x>0} {if {$y>0} {puts "both positive"}}';
         const expected = 'if { $x > 0 } {\n    if { $y > 0 } {\n        puts "both positive"\n    }\n}';
         const result = formatter.format(input);
         assert.strictEqual(result, expected);
@@ -66,10 +66,10 @@ suite('TCL Formatter Tests', () => {
 
     test('Should insert spacing around control flow braces', () => {
         const input = [
-            'proc test_function{ name value }{',
-            '    if{$name eq "" }{',
+            'proc test_function {name value} {',
+            '    if {$name eq ""} {',
             '        puts "Empty name"',
-            '    }else{',
+            '    } else {',
             '        puts "Name: $name"',
             '    }',
             '}'
@@ -96,7 +96,7 @@ suite('TCL Formatter Options', () => {
             spacesAroundOperators: false,
             spacesInsideBraces: false
         });
-        const result = customFormatter.format('if {$x>0}{puts "positive"}');
+        const result = customFormatter.format('if {$x>0} {puts "positive"}');
         const expected = 'if {$x>0} {\n    puts "positive"\n}';
         assert.strictEqual(result, expected);
     });
@@ -123,8 +123,8 @@ suite('TCL Formatter Options', () => {
         const customFormatter = new TclFormatter({
             alignBraces: false
         });
-        const result = customFormatter.format('if {$x>0}{puts $x}}');
-        const expected = 'if { $x > 0 } {\n    puts $x\n}}';
+        const result = customFormatter.format('if {$x>0} {if {$x>1} {puts $x}}');
+        const expected = 'if { $x > 0 } {\n    if { $x > 1 } {\n        puts $x\n    }}';
         assert.strictEqual(result, expected);
     });
 
@@ -201,19 +201,19 @@ suite('TCL Formatter Inline Block Expansion', () => {
     });
 
     test('Should expand inline while body to multi-line', () => {
-        const input = 'while {$i<10}{incr i}';
+        const input = 'while {$i<10} {incr i}';
         const expected = 'while { $i < 10 } {\n    incr i\n}';
         assert.strictEqual(formatter.format(input), expected);
     });
 
     test('Should expand inline foreach body to multi-line', () => {
-        const input = 'foreach item {a b c}{puts $item}';
+        const input = 'foreach item {a b c} {puts $item}';
         const expected = 'foreach item {a b c} {\n    puts $item\n}';
         assert.strictEqual(formatter.format(input), expected);
     });
 
     test('Should expand inline for body to multi-line', () => {
-        const input = 'for {set i 0}{$i < 5}{incr i}{puts $i}';
+        const input = 'for {set i 0} {$i < 5} {incr i} {puts $i}';
         const expected = 'for { set i 0 } { $i < 5 } { incr i } {\n    puts $i\n}';
         assert.strictEqual(formatter.format(input), expected);
     });

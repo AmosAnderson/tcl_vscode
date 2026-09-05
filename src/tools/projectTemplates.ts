@@ -428,6 +428,7 @@ namespace eval ::mypackage {
 
 # Source additional modules
 source [file join [file dirname [info script]] utils.tcl]
+package provide mypackage 1.0.0
 `
                 },
                 {
@@ -544,23 +545,22 @@ MIT License. See LICENSE for details.
 
 package require tcltest
 
-# Configure test options
-::tcltest::configure -verbose {pass fail error}
-::tcltest::configure -singleproc 1
+# Configure discovery relative to this script, independent of the working directory.
+set projectDir [file dirname [file normalize [info script]]]
+::tcltest::configure -verbose {pass fail error} -singleproc 1 \
+    -testdir [file join $projectDir tests]
+lappend auto_path [file join $projectDir src]
 
-# Add source directory to auto_path
-lappend auto_path [file join [file dirname [info script]] src]
-
-# Source all test files
-foreach testFile [glob -nocomplain [file join tests *.test]] {
-    source $testFile
+# cleanupTests resets its counters. Remember failures before each cleanup.
+set ::testsFailed 0
+proc ::tcltest::cleanupTestsHook {} {
+    if {$::tcltest::numTests(Failed) > 0} { set ::testsFailed 1 }
 }
-
-# Run all tests
-::tcltest::runAllTests
-
-# Exit with appropriate code
-exit [expr {$::tcltest::numTests(Failed) > 0}]
+if {[catch {::tcltest::runAllTests} error]} {
+    puts stderr $error
+    set ::testsFailed 1
+}
+exit $::testsFailed
 `
                 },
                 {
@@ -888,7 +888,18 @@ start_server $PORT
             throw new Error(`Template ${templateId} not found`);
         }
 
-        // Create project directory
+        // A project wizard must never replace an existing project's files.
+        try {
+            const existing = await fs.promises.lstat(projectPath);
+            if (!existing.isDirectory() || existing.isSymbolicLink() ||
+                (await fs.promises.readdir(projectPath)).length > 0) {
+                throw new Error(`Project location already exists and is not an empty directory: ${projectPath}`);
+            }
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                throw error;
+            }
+        }
         await fs.promises.mkdir(projectPath, { recursive: true });
 
         // Create all template files
@@ -900,7 +911,7 @@ start_server $PORT
             await fs.promises.mkdir(dir, { recursive: true });
             
             // Write file
-            await fs.promises.writeFile(filePath, file.content);
+            await fs.promises.writeFile(filePath, file.content, { flag: 'wx' });
         }
     }
 
